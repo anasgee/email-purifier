@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Email Validor by Raza Tech Tube</title>
+    <link rel="stylesheet" href="style.css" />
+
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+  </head>
+  <body>
+    <main>
+      <div class="container">
+        <!-- Hero Section -->
+        <div class="section fade-in-up">
+          <div class="hero-tag">
+            <i data-lucide="sparkles" width="14" height="14"></i>
+            <span>AI-POWERED DATA CLEANSING</span>
+          </div>
+
+          <h1 class="hero-title">
+            Email Validor<br />
+            <span style="color: var(--accent-primary)">by Raza Tech Tube</span>
+          </h1>
+
+          <p class="hero-subtitle">
+            Upload messy CSVs. AI-powered algorithms instantly isolate valid
+            contacts, purge duplicates, and structure your data for immediate
+            use.
+          </p>
+
+          <!-- Application Container -->
+          <div id="app-container" class="w-full">
+            <!-- Upload View -->
+            <div id="upload-view" class="card-panel upload-view">
+              <div id="drop-zone" class="upload-area">
+                <input
+                  type="file"
+                  id="file-input"
+                  accept=".csv"
+                  class="hidden"
+                  style="display: none"
+                />
+
+                <div class="upload-icon">
+                  <i data-lucide="upload-cloud" width="64" height="64"></i>
+                </div>
+
+                <h3
+                  style="
+                    font-size: 1.5rem;
+                    margin-bottom: 8px;
+                    color: var(--text-main);
+                  "
+                >
+                  Upload Dataset
+                </h3>
+
+                <p
+                  style="
+                    color: var(--text-muted);
+                    margin-bottom: 24px;
+                    max-width: 400px;
+                  "
+                >
+                  Drag & Drop your CSV file here.<br />
+                  <span style="font-size: 0.9em; opacity: 0.7"
+                    >Automated cleaning • Instant Preview • Secure</span
+                  >
+                </p>
+
+                <button id="select-file-btn" class="btn btn-primary">
+                  <i data-lucide="file-text" width="20" height="20"></i>
+                  <span>Select from System</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Processing View (Hidden initially) -->
+            <div id="processing-view" class="hidden flex-col gap-lg">
+              <!-- Status Header -->
+              <div
+                class="card-panel"
+                style="
+                  display: flex;
+                  align-items: center;
+                  justify-content: space-between;
+                "
+              >
+                <h2
+                  style="
+                    font-size: 1.5rem;
+                    font-weight: bold;
+                    display: flex;
+                    align-items: center;
+                    gap: 1rem;
+                  "
+                >
+                  <span id="status-icon-container">
+                    <!-- Icon injected via JS -->
+                  </span>
+                  <span id="status-text">Analyzing Data Stream...</span>
+                </h2>
+                <button id="reset-btn" class="btn btn-ghost">
+                  <i data-lucide="refresh-cw" width="14" height="14"></i> Reset
+                  System
+                </button>
+              </div>
+
+              <!-- Stats Matrix -->
+              <div class="grid-3">
+                <div class="stat-card" style="animation-delay: 0.1s">
+                  <i
+                    data-lucide="activity"
+                    class="text-accent"
+                    width="32"
+                    height="32"
+                    style="margin-bottom: 1rem"
+                  ></i>
+                  <h4
+                    style="
+                      color: var(--text-muted);
+                      font-size: 0.8rem;
+                      text-transform: uppercase;
+                      letter-spacing: 1px;
+                    "
+                  >
+                    Total Input
+                  </h4>
+                  <span id="stat-total" class="stat-value">0</span>
+                </div>
+
+                <div
+                  class="stat-card"
+                  style="
+                    border-color: var(--accent-success);
+                    animation-delay: 0.2s;
+                  "
+                >
+                  <i
+                    data-lucide="check-circle"
+                    class="text-success"
+                    width="32"
+                    height="32"
+                    style="margin-bottom: 1rem"
+                  ></i>
+                  <h4
+                    style="
+                      color: var(--accent-success);
+                      font-size: 0.8rem;
+                      text-transform: uppercase;
+                      letter-spacing: 1px;
+                    "
+                  >
+                    Valid Contacts
+                  </h4>
+                  <span
+                    id="stat-valid"
+                    class="stat-value"
+                    style="color: var(--accent-success)"
+                    >0</span
+                  >
+                </div>
+
+                <div
+                  class="stat-card"
+                  style="
+                    border-color: var(--accent-error);
+                    animation-delay: 0.3s;
+                  "
+                >
+                  <i
+                    data-lucide="filter"
+                    class="text-error"
+                    width="32"
+                    height="32"
+                    style="margin-bottom: 1rem"
+                  ></i>
+                  <h4
+                    style="
+                      color: var(--accent-error);
+                      font-size: 0.8rem;
+                      text-transform: uppercase;
+                      letter-spacing: 1px;
+                    "
+                  >
+                    Filtered / Invalid
+                  </h4>
+                  <span
+                    id="stat-filtered"
+                    class="stat-value"
+                    style="color: var(--accent-error)"
+                    >0</span
+                  >
+                </div>
+              </div>
+
+              <!-- Dashboard: Logs & Download -->
+              <div class="grid-console">
+                <!-- Log Terminal -->
+                <div class="log-console">
+                  <div class="log-header">
+                    <span
+                      style="display: flex; align-items: center; gap: 0.5rem"
+                    >
+                      <i data-lucide="file-text" width="14" height="14"></i>
+                      SYSTEM_LOGS_V2.log
+                    </span>
+                    <span class="text-accent" style="font-size: 0.7rem"
+                      >● LIVE CONNECTION</span
+                    >
+                  </div>
+                  <div id="log-content" class="log-content">
+                    <div
+                      class="text-accent animate-pulse"
+                      style="animation: pulse 1s infinite"
+                    >
+                      _
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Download Panel (Hidden/Empty state initially) -->
+                <div id="download-panel-container">
+                  <!-- Waiting State -->
+                  <div
+                    id="download-waiting"
+                    class="card-panel"
+                    style="
+                      display: flex;
+                      flex-direction: column;
+                      align-items: center;
+                      justify-content: center;
+                      text-align: center;
+                      opacity: 0.5;
+                      border-style: dashed;
+                      height: 100%;
+                    "
+                  >
+                    <i
+                      data-lucide="activity"
+                      style="color: #444; margin-bottom: 1rem"
+                      width="40"
+                      height="40"
+                    ></i>
+                    <p style="color: var(--text-muted); font-size: 0.9rem">
+                      Waiting for process completion...
+                    </p>
+                  </div>
+
+                  <!-- Ready State (Hidden) -->
+                  <div
+                    id="download-ready"
+                    class="card-panel hidden"
+                    style="
+                      display: flex;
+                      flex-direction: column;
+                      align-items: center;
+                      justify-content: center;
+                      text-align: center;
+                      border-color: var(--accent-success);
+                      height: 100%;
+                    "
+                  >
+                    <div
+                      style="
+                        background: rgba(0, 224, 84, 0.1);
+                        padding: 1rem;
+                        border-radius: 50%;
+                        margin-bottom: 1rem;
+                      "
+                    >
+                      <i
+                        data-lucide="check-circle"
+                        class="text-success"
+                        width="40"
+                        height="40"
+                      ></i>
+                    </div>
+
+                    <h3
+                      style="
+                        font-size: 1.2rem;
+                        font-weight: bold;
+                        margin-bottom: 0.5rem;
+                      "
+                    >
+                      Ready for Export
+                    </h3>
+                    <p
+                      style="
+                        color: var(--text-muted);
+                        font-size: 0.9rem;
+                        margin-bottom: 1.5rem;
+                      "
+                    >
+                      Data has been successfully transformed and optimized.
+                    </p>
+
+                    <a
+                      id="download-link"
+                      href="#"
+                      class="btn btn-primary"
+                      style="width: 100%; justify-content: center"
+                    >
+                      <i data-lucide="download" width="18" height="18"></i>
+                      <span>Download CSV</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <footer
+        style="
+          text-align: center;
+          padding: 2rem;
+          color: var(--text-muted);
+          font-size: 0.9rem;
+          border-top: 1px solid var(--border-subtle);
+          margin-top: 4rem;
+        "
+      >
+        <p>Developed with love by Anas Raza - Raza Tech Tube</p>
+      </footer>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
