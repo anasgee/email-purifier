@@ -19,6 +19,7 @@ const downloadReady = document.getElementById("download-ready");
 const downloadLink = document.getElementById("download-link");
 const downloadMergedBtn = document.getElementById("download-merged-btn");
 const downloadZipBtn = document.getElementById("download-zip-btn");
+const downloadInvalidBtn = document.getElementById("download-invalid-btn");
 const downloadActions = document.getElementById("download-actions"); // Container
 
 // Stats Elements
@@ -84,6 +85,11 @@ downloadMergedBtn.addEventListener("click", (e) => {
 downloadZipBtn.addEventListener("click", (e) => {
   e.preventDefault();
   downloadZIP();
+});
+
+downloadInvalidBtn.addEventListener("click", (e) => {
+  e.preventDefault();
+  downloadInvalidCSV();
 });
 
 // Main Logic
@@ -228,6 +234,7 @@ function analyzeFileContent(fileName, data, fields) {
   }
 
   const fileValidRows = [];
+  const fileInvalidRows = [];
 
   data.forEach((row) => {
     const emailRaw = row[emailCol];
@@ -238,8 +245,19 @@ function analyzeFileContent(fileName, data, fields) {
     const phone =
       phoneCol && row[phoneCol] ? row[phoneCol].toString().trim() : "";
 
-    if (!email) {
+    // Common helper to push invalid
+    const markInvalid = (status) => {
+      fileInvalidRows.push({
+        Name: name,
+        OriginalEmail: emailRaw,
+        Phone: phone,
+        Status: status,
+      });
       stats.invalid++;
+    };
+
+    if (!email) {
+      markInvalid("Missing Email");
       return;
     }
 
@@ -252,7 +270,7 @@ function analyzeFileContent(fileName, data, fields) {
 
     // 2. Validate Format
     if (!isValidEmail(email)) {
-      stats.invalid++;
+      markInvalid("Invalid Format");
       return;
     }
 
@@ -260,6 +278,11 @@ function analyzeFileContent(fileName, data, fields) {
     const normalizedEmail = email.toLowerCase();
     if (globalSeenEmails.has(normalizedEmail)) {
       stats.duplicates++;
+      // Optional: Do we want to save duplicates to invalid list? Usually yes.
+      // But 'duplicates' is a separate stat.
+      // Let's add them to invalid list with status 'Duplicate' so user can see them?
+      // User asked for "email that not shows correct". Duplicates are usually 'correct format' but 'redundant'.
+      // I'll skip duplicates for now unless user asks, to keep "Invalid" focused on errors.
     } else {
       // Valid & New
       globalSeenEmails.add(normalizedEmail);
@@ -279,6 +302,7 @@ function analyzeFileContent(fileName, data, fields) {
   processedFilesData.push({
     name: fileName,
     rows: fileValidRows,
+    invalidRows: fileInvalidRows,
   });
 
   updateStatsUI();
@@ -318,6 +342,14 @@ function finishProcessing() {
     downloadZipBtn.classList.remove("hidden");
     downloadMergedBtn.style.display = "flex";
     downloadZipBtn.style.display = "flex";
+  }
+
+  // Toggle Invalid Button
+  if (stats.invalid > 0) {
+    downloadInvalidBtn.classList.remove("hidden");
+    downloadInvalidBtn.style.display = "flex";
+  } else {
+    downloadInvalidBtn.classList.add("hidden");
   }
 
   addLog("All files processed successfully.", "success");
@@ -399,6 +431,37 @@ function downloadZIP() {
     a.click();
     document.body.removeChild(a);
   });
+}
+
+function downloadInvalidCSV() {
+  if (processedFilesData.length === 0) return;
+
+  const blobParts = [];
+  const headers = ["Name", "OriginalEmail", "Phone", "Status"];
+  blobParts.push(headers.join(",") + "\n");
+
+  const unparseConfig = { header: false, skipEmptyLines: true };
+
+  processedFilesData.forEach((f) => {
+    if (!f.invalidRows || f.invalidRows.length === 0) return;
+    const chunkCsv = Papa.unparse(f.invalidRows, unparseConfig);
+    if (chunkCsv && chunkCsv.length > 0) {
+      blobParts.push(chunkCsv);
+      blobParts.push("\n");
+    }
+  });
+
+  const blob = new Blob(blobParts, { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `invalid_rejected_data.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // --- Utilities ---
