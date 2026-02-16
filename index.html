@@ -9,6 +9,7 @@
     <!-- External Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
   </head>
   <body>
@@ -41,6 +42,7 @@
                   type="file"
                   id="file-input"
                   accept=".csv"
+                  multiple
                   class="hidden"
                   style="display: none"
                 />
@@ -56,7 +58,7 @@
                     color: var(--text-main);
                   "
                 >
-                  Upload Dataset
+                  Upload Dataset(s)
                 </h3>
 
                 <p
@@ -66,7 +68,7 @@
                     max-width: 400px;
                   "
                 >
-                  Drag & Drop your CSV file here.<br />
+                  Drag & Drop your CSV files here.<br />
                   <span style="font-size: 0.9em; opacity: 0.7"
                     >Automated cleaning • Instant Preview • Secure</span
                   >
@@ -111,7 +113,7 @@
               </div>
 
               <!-- Stats Matrix -->
-              <div class="grid-3">
+              <div class="grid-4" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;">
                 <div class="stat-card" style="animation-delay: 0.1s">
                   <i
                     data-lucide="activity"
@@ -165,6 +167,39 @@
                   >
                 </div>
 
+                 <div
+                  class="stat-card"
+                  style="
+                    border-color: #f59e0b; /* Amber for duplicates */
+                    animation-delay: 0.25s;
+                  "
+                >
+                  <i
+                    data-lucide="copy"
+                    class="text-warning"
+                    style="color: #f59e0b;"
+                    width="32"
+                    height="32"
+                    style="margin-bottom: 1rem"
+                  ></i>
+                  <h4
+                    style="
+                      color: #f59e0b;
+                      font-size: 0.8rem;
+                      text-transform: uppercase;
+                      letter-spacing: 1px;
+                    "
+                  >
+                    Duplicates
+                  </h4>
+                  <span
+                    id="stat-duplicates"
+                    class="stat-value"
+                    style="color: #f59e0b;"
+                    >0</span
+                  >
+                </div>
+
                 <div
                   class="stat-card"
                   style="
@@ -187,7 +222,7 @@
                       letter-spacing: 1px;
                     "
                   >
-                    Filtered / Invalid
+                    Invalid
                   </h4>
                   <span
                     id="stat-filtered"
@@ -300,15 +335,36 @@
                       Data has been successfully transformed and optimized.
                     </p>
 
-                    <a
-                      id="download-link"
-                      href="#"
-                      class="btn btn-primary"
-                      style="width: 100%; justify-content: center"
-                    >
-                      <i data-lucide="download" width="18" height="18"></i>
-                      <span>Download CSV</span>
-                    </a>
+                    <div id="download-actions" style="display: flex; gap: 1rem; width: 100%; flex-wrap: wrap;">
+                        <a
+                        id="download-link"
+                        href="#"
+                        class="btn btn-primary"
+                        style="flex: 1; justify-content: center"
+                        >
+                        <i data-lucide="download" width="18" height="18"></i>
+                        <span>Download CSV</span>
+                        </a>
+                        
+                        <a
+                        id="download-merged-btn"
+                        href="#"
+                        class="btn btn-primary hidden"
+                        style="flex: 1; justify-content: center; background: var(--accent-secondary, #6366f1);"
+                        >
+                        <i data-lucide="file-plus" width="18" height="18"></i>
+                        <span>Download Merged</span>
+                        </a>
+
+                        <button
+                        id="download-zip-btn"
+                        class="btn btn-primary hidden"
+                        style="flex: 1; justify-content: center; background: var(--text-main, #333);"
+                        >
+                        <i data-lucide="archive" width="18" height="18"></i>
+                        <span>Download ZIP</span>
+                        </button>
+                    </div>
                   </div>
                 </div>
               </div>
