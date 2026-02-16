@@ -113,7 +113,7 @@
               </div>
 
               <!-- Stats Matrix -->
-              <div class="grid-4" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;">
+              <div class="grid-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
                 <div class="stat-card" style="animation-delay: 0.1s">
                   <i
                     data-lucide="activity"
@@ -203,8 +203,40 @@
                 <div
                   class="stat-card"
                   style="
-                    border-color: var(--accent-error);
+                    border-color: #8b5cf6; /* Violet for corrected */
                     animation-delay: 0.3s;
+                  "
+                >
+                  <i
+                    data-lucide="wand-2"
+                    style="color: #8b5cf6;"
+                    width="32"
+                    height="32"
+                    style="margin-bottom: 1rem"
+                  ></i>
+                  <h4
+                    style="
+                      color: #8b5cf6;
+                      font-size: 0.8rem;
+                      text-transform: uppercase;
+                      letter-spacing: 1px;
+                    "
+                  >
+                    Auto-Corrected
+                  </h4>
+                  <span
+                    id="stat-corrected"
+                    class="stat-value"
+                    style="color: #8b5cf6;"
+                    >0</span
+                  >
+                </div>
+
+                <div
+                  class="stat-card"
+                  style="
+                    border-color: var(--accent-error);
+                    animation-delay: 0.35s;
                   "
                 >
                   <i

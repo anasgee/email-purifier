@@ -36,6 +36,7 @@ let stats = {
   valid: 0,
   duplicates: 0,
   invalid: 0,
+  corrected: 0,
 };
 
 // Event Listeners
@@ -100,7 +101,7 @@ async function startProcessing(files) {
   // Reset State
   processedFilesData = [];
   globalSeenEmails.clear();
-  stats = { total: 0, valid: 0, duplicates: 0, invalid: 0 };
+  stats = { total: 0, valid: 0, duplicates: 0, invalid: 0, corrected: 0 };
 
   logContent.innerHTML = "";
   updateStatsUI();
@@ -243,7 +244,11 @@ function analyzeFileContent(fileName, data, fields) {
     }
 
     // 1. Auto-correct Typos
+    const originalEmail = email;
     email = autoCorrectEmail(email);
+    if (email !== originalEmail) {
+      stats.corrected++;
+    }
 
     // 2. Validate Format
     if (!isValidEmail(email)) {
@@ -493,6 +498,8 @@ function updateStatsUI() {
   statValidEl.textContent = stats.valid.toLocaleString();
   statDuplicatesEl.textContent = stats.duplicates.toLocaleString();
   statFilteredEl.textContent = stats.invalid.toLocaleString();
+  document.getElementById("stat-corrected").textContent =
+    stats.corrected.toLocaleString();
 }
 
 function setStatus(status) {
