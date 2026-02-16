@@ -143,6 +143,69 @@ function processSingleFile(file) {
   });
 }
 
+// Domain Correction Map
+const DOMAIN_CORRECTIONS = {
+  "gmail.com": [
+    "gamil.com",
+    "gmali.com",
+    "gmaill.com",
+    "gmai.com",
+    "gmil.com",
+    "gmal.com",
+    "gamail.com",
+    "gmail.co",
+    "gmail.cm",
+    "gmail.om",
+    "gma.com",
+    "gm.com",
+    "gml.com",
+    "ymail.com",
+  ],
+  "yahoo.com": [
+    "yaho.com",
+    "yahooo.com",
+    "yhooo.com",
+    "yaho.co",
+    "yahoo.co",
+    "yhoo.com",
+    "yahho.com",
+  ],
+  "hotmail.com": [
+    "hotmal.com",
+    "hotmai.com",
+    "hotmil.com",
+    "hotail.com",
+    "homtail.com",
+    "hotmaill.com",
+    "hotmaik.com",
+  ],
+  "outlook.com": [
+    "outlok.com",
+    "otlook.com",
+    "outlook.co",
+    "outook.com",
+    "outllook.com",
+  ],
+  "icloud.com": ["icoud.com", "iclud.com", "iclou.com", "icloud.co"],
+};
+
+function autoCorrectEmail(email) {
+  if (!email || !email.includes("@")) return email;
+  const parts = email.split("@");
+  if (parts.length !== 2) return email;
+  const localPart = parts[0];
+  let domain = parts[1].toLowerCase();
+
+  // Correction
+  for (const [correctDomain, typos] of Object.entries(DOMAIN_CORRECTIONS)) {
+    if (typos.includes(domain)) {
+      domain = correctDomain;
+      break;
+    }
+  }
+  return `${localPart}@${domain}`;
+}
+
 function analyzeFileContent(fileName, data, fields) {
   if (!data || data.length === 0) {
     addLog(`Skipping ${fileName}: Empty file.`, "error");
@@ -167,7 +230,7 @@ function analyzeFileContent(fileName, data, fields) {
 
   data.forEach((row) => {
     const emailRaw = row[emailCol];
-    const email = emailRaw ? emailRaw.toString().trim() : "";
+    let email = emailRaw ? emailRaw.toString().trim() : "";
 
     // Safety check for other columns
     const name = nameCol && row[nameCol] ? row[nameCol].toString().trim() : "";
@@ -179,7 +242,10 @@ function analyzeFileContent(fileName, data, fields) {
       return;
     }
 
-    // 1. Check Typos and format
+    // 1. Auto-correct Typos
+    email = autoCorrectEmail(email);
+
+    // 2. Validate Format
     if (!isValidEmail(email)) {
       stats.invalid++;
       return;
@@ -386,59 +452,7 @@ function isValidEmail(email) {
   if (domain.startsWith(".") || domain.endsWith(".")) return false;
   if (domain.includes("..")) return false;
 
-  // 4. Typos & Common Providers Check
-  // Map of correct domain -> Array of common typos
-  const typoMap = {
-    "gmail.com": [
-      "gamil.com",
-      "gmali.com",
-      "gmaill.com",
-      "gmai.com",
-      "gmil.com",
-      "gmal.com",
-      "gamail.com",
-      "gmail.co",
-      "gmail.cm",
-      "gmail.om",
-      "gma.com",
-      "gm.com",
-      "gml.com",
-      "ymail.com", // sometimes confused
-    ],
-    "yahoo.com": [
-      "yaho.com",
-      "yahooo.com",
-      "yhooo.com",
-      "yaho.co",
-      "yahoo.co",
-      "yhoo.com",
-      "yahho.com",
-    ],
-    "hotmail.com": [
-      "hotmal.com",
-      "hotmai.com",
-      "hotmil.com",
-      "hotail.com",
-      "homtail.com",
-      "hotmaill.com",
-      "hotmaik.com",
-    ],
-    "outlook.com": [
-      "outlok.com",
-      "otlook.com",
-      "outlook.co",
-      "outook.com",
-      "outllook.com",
-    ],
-    "icloud.com": ["icoud.com", "iclud.com", "iclou.com", "icloud.co"],
-  };
-
-  // Check if the domain is a known typo
-  for (const [correctDomain, typos] of Object.entries(typoMap)) {
-    if (typos.includes(domain)) {
-      return false; // Invalid typo
-    }
-  }
+  // 4. Typos check removed (handled by autoCorrectEmail)
 
   // 5. Catch-all for very short TLDs (e.g. .c, .m) - already covered by regex {2,}
   // 6. Specific 'gmail' pattern check (optional but requested "missspelled")
