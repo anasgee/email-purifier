@@ -264,23 +264,49 @@ function prepareSingleDownload(fileData) {
 }
 
 function downloadMergedCSV() {
-  // Combine all rows
-  let allRows = [];
-  processedFilesData.forEach((f) => {
-    allRows = allRows.concat(f.rows);
+  if (processedFilesData.length === 0) return;
+
+  const blobParts = [];
+
+  // Standard headers based on our analysis logic
+  const headers = ["Name", "Email", "Phone"];
+
+  // Add Header (We assume standard simple headers, so direct join is safe)
+  blobParts.push(headers.join(",") + "\n");
+
+  // Options for unparsing chunks without headers
+  const unparseConfig = {
+    header: false,
+    skipEmptyLines: true,
+  };
+
+  processedFilesData.forEach((f, index) => {
+    if (!f.rows || f.rows.length === 0) return;
+
+    // Unparse this file's rows
+    const chunkCsv = Papa.unparse(f.rows, unparseConfig);
+
+    if (chunkCsv && chunkCsv.length > 0) {
+      blobParts.push(chunkCsv);
+      // Add newline if it's not the very last chunk (or to be safe always add,
+      // but need to avoid extra empty lines. CSV allows trailing newline).
+      blobParts.push("\n");
+    }
   });
 
-  const csv = Papa.unparse(allRows);
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const blob = new Blob(blobParts, { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
 
   // Create temp link to click
   const a = document.createElement("a");
   a.href = url;
-  a.download = `merged_cleaned_data.csv`;
+  a.download = `merged_purified_data.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
+
+  // Clean up
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function downloadZIP() {
@@ -337,37 +363,97 @@ function detectColumns(headers) {
 }
 
 function isValidEmail(email) {
-  // Basic Regex
-  const basicValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  if (!basicValid) return false;
+  // 1. Basic Syntax Check (RFC 5322 compliant-ish)
+  // Ensures: no spaces, @ symbol present, dot in domain, TLD length >= 2
+  const emailRegex =
+    /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
 
-  // Gmail Typo Check
-  const domain = email.split("@")[1].toLowerCase();
+  if (!emailRegex.test(email)) return false;
 
-  if (domain === "gmail.com") return true;
+  const parts = email.split("@");
+  if (parts.length !== 2) return false;
 
-  // List of common typos to invalidate
-  const gmailTypos = [
-    "gamil.com",
-    "gmali.com",
-    "gmaill.com",
-    "gmai.com",
-    "gmil.com",
-    "gmal.com",
-    "gamail.com",
-    "gmail.co",
-    "gmail.cm",
-    "gmail.om",
-    "gma.com",
-    "gm.com",
-    "gml.com",
-  ];
+  const domain = parts[1].toLowerCase();
+  const localPart = parts[0];
 
-  if (gmailTypos.includes(domain)) return false;
+  // 2. Local Part Validation
+  if (localPart.length > 64) return false; // RFC standard
+  if (domain.length > 255) return false; // RFC standard
+  if (localPart.startsWith(".") || localPart.endsWith(".")) return false;
+  if (localPart.includes("..")) return false; // No consecutive dots
 
-  // Also check if it looks suspiciously like gmail but isn't
-  // e.g. starts with g, ends with l.com or something, but this might produce false positives for 'global.com'
-  // So we stick to the explicit list for safety, as requested: "whose @gmail.com is missspelled"
+  // 3. Domain Validation
+  if (domain.startsWith(".") || domain.endsWith(".")) return false;
+  if (domain.includes("..")) return false;
+
+  // 4. Typos & Common Providers Check
+  // Map of correct domain -> Array of common typos
+  const typoMap = {
+    "gmail.com": [
+      "gamil.com",
+      "gmali.com",
+      "gmaill.com",
+      "gmai.com",
+      "gmil.com",
+      "gmal.com",
+      "gamail.com",
+      "gmail.co",
+      "gmail.cm",
+      "gmail.om",
+      "gma.com",
+      "gm.com",
+      "gml.com",
+      "ymail.com", // sometimes confused
+    ],
+    "yahoo.com": [
+      "yaho.com",
+      "yahooo.com",
+      "yhooo.com",
+      "yaho.co",
+      "yahoo.co",
+      "yhoo.com",
+      "yahho.com",
+    ],
+    "hotmail.com": [
+      "hotmal.com",
+      "hotmai.com",
+      "hotmil.com",
+      "hotail.com",
+      "homtail.com",
+      "hotmaill.com",
+      "hotmaik.com",
+    ],
+    "outlook.com": [
+      "outlok.com",
+      "otlook.com",
+      "outlook.co",
+      "outook.com",
+      "outllook.com",
+    ],
+    "icloud.com": ["icoud.com", "iclud.com", "iclou.com", "icloud.co"],
+  };
+
+  // Check if the domain is a known typo
+  for (const [correctDomain, typos] of Object.entries(typoMap)) {
+    if (typos.includes(domain)) {
+      return false; // Invalid typo
+    }
+  }
+
+  // 5. Catch-all for very short TLDs (e.g. .c, .m) - already covered by regex {2,}
+  // 6. Specific 'gmail' pattern check (optional but requested "missspelled")
+  // If it contains "gmail" but isn't "gmail.com" and isn't a valid subdomain like "mail.gmail.com"
+  if (
+    domain.includes("gmail") &&
+    domain !== "gmail.com" &&
+    !domain.endsWith(".gmail.com")
+  ) {
+    // Check Levenshtein distance or simple heuristics?
+    // For now, if it looks like gmail but assumes it's a typo of the main domain
+    // Example: mygmail.com is valid? Yes.
+    // gmail.net? Valid (technically).
+    // so we rely on the specific list above for safety.
+  }
 
   return true;
 }
