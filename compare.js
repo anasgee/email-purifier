@@ -20,7 +20,13 @@ const downloadWaiting = document.getElementById("download-waiting");
 const downloadReady = document.getElementById("download-ready");
 const statusText = document.getElementById("status-text");
 const statusIconContainer = document.getElementById("status-icon-container");
-const downloadResultBtn = document.getElementById("download-result-btn");
+// Download Buttons
+const dlAFull = document.getElementById("dl-a-full");
+const dlAZip = document.getElementById("dl-a-zip");
+const dlBFull = document.getElementById("dl-b-full");
+const dlBZip = document.getElementById("dl-b-zip");
+const dlAllFull = document.getElementById("dl-all-full");
+const dlAllZip = document.getElementById("dl-all-zip");
 
 // DOM Elements for Stats
 const statTotalA = document.getElementById("stat-total-a");
@@ -38,6 +44,8 @@ let fileA = null;
 let fileB = null;
 let fileAData = [];
 let fileBData = [];
+let uniqueARows = [];
+let uniqueBRows = [];
 let splitChunks = [];
 
 // Event Listeners
@@ -153,7 +161,27 @@ resetBtn.addEventListener("click", () => {
   window.location.reload();
 });
 
-downloadResultBtn.addEventListener("click", downloadSplitZip);
+dlAFull.addEventListener("click", () =>
+  downloadFullCSV(uniqueARows, "unique_file_A"),
+);
+dlAZip.addEventListener("click", () =>
+  downloadChunkedZip(uniqueARows, "unique_file_A_chunks"),
+);
+dlBFull.addEventListener("click", () =>
+  downloadFullCSV(uniqueBRows, "unique_file_B"),
+);
+dlBZip.addEventListener("click", () =>
+  downloadChunkedZip(uniqueBRows, "unique_file_B_chunks"),
+);
+dlAllFull.addEventListener("click", () =>
+  downloadFullCSV([...uniqueARows, ...uniqueBRows], "unique_combined"),
+);
+dlAllZip.addEventListener("click", () =>
+  downloadChunkedZip(
+    [...uniqueARows, ...uniqueBRows],
+    "unique_combined_chunks",
+  ),
+);
 
 // Logic
 async function startComparison() {
@@ -281,7 +309,8 @@ function performExclusiveCompare() {
   let uniqueACount = 0;
   let uniqueBCount = 0;
 
-  const uniqueRows = new Map();
+  const uniqueAMap = new Map();
+  const uniqueBMap = new Map();
   const skippedLog = [];
 
   // 1. Check A against B
@@ -291,23 +320,24 @@ function performExclusiveCompare() {
       skippedLog.push({ email, reason: "Common in B", source: "File A" });
     } else {
       uniqueACount++;
-      uniqueRows.set(email, transformRow(row, email));
+      uniqueAMap.set(email, transformRow(row, email));
     }
   });
 
   // 2. Check B against A
   emailsB_Map.forEach((row, email) => {
     if (emailsA_Map.has(email)) {
-      // Already counted overlap in A loop or will be skipped.
+      // Already counted overlap in A loop.
     } else {
       uniqueBCount++;
-      if (!uniqueRows.has(email)) {
-        uniqueRows.set(email, transformRow(row, email));
-      }
+      uniqueBMap.set(email, transformRow(row, email));
     }
   });
 
-  const finalData = Array.from(uniqueRows.values());
+  // Store results separately for download
+  uniqueARows = Array.from(uniqueAMap.values());
+  uniqueBRows = Array.from(uniqueBMap.values());
+  const finalData = [...uniqueARows, ...uniqueBRows];
 
   // Update Stats UI
   statSkipped.textContent = overlapCount.toLocaleString(); // Matches "Emails in both"
@@ -397,13 +427,8 @@ function transformRow(row, email) {
 }
 
 function prepareChunks(rows) {
-  const CHUNK_SIZE = 4999;
-  splitChunks = [];
-  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
-    splitChunks.push(rows.slice(i, i + CHUNK_SIZE));
-  }
-
-  addLog(`Formatted and Split into ${splitChunks.length} chunks.`);
+  addLog(`Total unique records: ${rows.length}`);
+  addLog(`Unique A: ${uniqueARows.length} | Unique B: ${uniqueBRows.length}`);
 
   downloadWaiting.classList.add("hidden");
   downloadReady.classList.remove("hidden");
@@ -411,23 +436,46 @@ function prepareChunks(rows) {
   triggerConfetti();
 }
 
-function downloadSplitZip() {
-  if (splitChunks.length === 0) return;
+// Download: Full CSV (single file)
+function downloadFullCSV(rows, filename) {
+  if (!rows || rows.length === 0) {
+    alert("No data to download.");
+    return;
+  }
+  const csv = Papa.unparse(rows);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${filename}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
+// Download: Chunked ZIP (4999 per file)
+function downloadChunkedZip(rows, filename) {
+  if (!rows || rows.length === 0) {
+    alert("No data to download.");
+    return;
+  }
+
+  const CHUNK_SIZE = 4999;
   const zip = new JSZip();
 
-  splitChunks.forEach((chunk, index) => {
+  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+    const chunk = rows.slice(i, i + CHUNK_SIZE);
+    const batchNum = Math.floor(i / CHUNK_SIZE) + 1;
     const csv = Papa.unparse(chunk);
-    const start = index * 4999 + 1;
-    const end = start + chunk.length - 1;
-    zip.file(`unique_contacts_batch_${index + 1}.csv`, csv);
-  });
+    zip.file(`${filename}_batch_${batchNum}.csv`, csv);
+  }
 
   zip.generateAsync({ type: "blob" }).then(function (content) {
     const url = URL.createObjectURL(content);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "exclusive_contacts_comparison.zip";
+    a.download = `${filename}.zip`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

@@ -222,17 +222,62 @@
                     <p style="color: var(--text-muted); font-size: 0.9rem">Waiting for comparison...</p>
                   </div>
 
-                  <div id="download-ready" class="card-panel hidden" style="display: flex; flex-direction: column; align-items: center; justify-content: center; border-color: var(--accent-success); height: 100%;">
-                    <div style="background: rgba(0, 224, 84, 0.1); padding: 1rem; border-radius: 50%; margin-bottom: 1rem;">
-                      <i data-lucide="check-circle" class="text-success" width="40" height="40"></i>
+                  <div id="download-ready" class="card-panel hidden" style="display: flex; flex-direction: column; gap: 1.5rem; border-color: var(--accent-success); height: 100%;">
+                    <div style="text-align: center;">
+                      <div style="background: rgba(0, 224, 84, 0.1); padding: 1rem; border-radius: 50%; display: inline-block; margin-bottom: 0.5rem;">
+                        <i data-lucide="check-circle" class="text-success" width="32" height="32"></i>
+                      </div>
+                      <h3 style="font-size: 1.1rem; font-weight: bold;">Comparison Complete</h3>
                     </div>
-                    <h3 style="font-size: 1.2rem; font-weight: bold; margin-bottom: 0.5rem;">Comparison Complete</h3>
-                    <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">Unique records ready for download.</p>
 
-                    <button id="download-result-btn" class="btn btn-zip" style="width: 100%; justify-content: center;">
-                        <i data-lucide="package-check" width="18" height="18"></i>
-                        <span>Download Unique (ZIP)</span>
-                    </button>
+                    <!-- Unique A Downloads -->
+                    <div style="border: 1px solid var(--accent-primary); border-radius: 8px; padding: 1rem;">
+                      <h4 style="font-size: 0.8rem; color: var(--accent-primary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.75rem;">
+                        <i data-lucide="file-text" width="14" height="14" style="vertical-align: middle;"></i>
+                        Unique to File A
+                      </h4>
+                      <div style="display: flex; gap: 0.5rem;">
+                        <button id="dl-a-full" class="btn btn-ghost btn-sm" style="flex: 1; font-size: 0.75rem;">
+                          <i data-lucide="download" width="14" height="14"></i> Full CSV
+                        </button>
+                        <button id="dl-a-zip" class="btn btn-primary btn-sm" style="flex: 1; font-size: 0.75rem;">
+                          <i data-lucide="package" width="14" height="14"></i> Chunked ZIP
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- Unique B Downloads -->
+                    <div style="border: 1px solid #f59e0b; border-radius: 8px; padding: 1rem;">
+                      <h4 style="font-size: 0.8rem; color: #f59e0b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.75rem;">
+                        <i data-lucide="file-text" width="14" height="14" style="vertical-align: middle;"></i>
+                        Unique to File B
+                      </h4>
+                      <div style="display: flex; gap: 0.5rem;">
+                        <button id="dl-b-full" class="btn btn-ghost btn-sm" style="flex: 1; font-size: 0.75rem;">
+                          <i data-lucide="download" width="14" height="14"></i> Full CSV
+                        </button>
+                        <button id="dl-b-zip" class="btn btn-primary btn-sm" style="flex: 1; font-size: 0.75rem;">
+                          <i data-lucide="package" width="14" height="14"></i> Chunked ZIP
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- Combined Downloads -->
+                    <div style="border: 1px solid var(--accent-success); border-radius: 8px; padding: 1rem;">
+                      <h4 style="font-size: 0.8rem; color: var(--accent-success); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.75rem;">
+                        <i data-lucide="files" width="14" height="14" style="vertical-align: middle;"></i>
+                        Combined (A + B Unique)
+                      </h4>
+                      <div style="display: flex; gap: 0.5rem;">
+                        <button id="dl-all-full" class="btn btn-ghost btn-sm" style="flex: 1; font-size: 0.75rem;">
+                          <i data-lucide="download" width="14" height="14"></i> Full CSV
+                        </button>
+                        <button id="dl-all-zip" class="btn btn-zip btn-sm" style="flex: 1; font-size: 0.75rem;">
+                          <i data-lucide="package-check" width="14" height="14"></i> Chunked ZIP
+                        </button>
+                      </div>
+                    </div>
+
                   </div>
                 </div>
               </div>
