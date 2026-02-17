@@ -25,8 +25,9 @@ const downloadResultBtn = document.getElementById("download-result-btn");
 // DOM Elements for Stats
 const statTotalA = document.getElementById("stat-total-a");
 const statTotalB = document.getElementById("stat-total-b");
-const statOverlap = document.getElementById("stat-overlap");
-const statUniqueResult = document.getElementById("stat-unique-result");
+const statUniqueA = document.getElementById("stat-unique-a");
+const statUniqueB = document.getElementById("stat-unique-b");
+const statSkipped = document.getElementById("stat-skipped");
 
 // State
 let fileA = null;
@@ -169,67 +170,121 @@ function performExclusiveCompare() {
   });
 
   let overlapCount = 0;
-  const uniqueMap = new Map(); // Use Map to deduplicate final result by email
+  let uniqueACount = 0;
+  let uniqueBCount = 0;
+
+  const uniqueRows = new Map(); // deduplicated result map
+  const skippedLog = [];
 
   // 1. Process File A
-  // Keep row IF email is NOT in B
   fileAData.forEach((row) => {
     const email = getEmail(row);
     if (email) {
       if (emailsB_Set.has(email)) {
-        overlapCount++; // It's common, so we toss it
+        overlapCount++;
+        skippedLog.push({ email, reason: "Common in B", source: "File A" });
       } else {
         // Unique to A
-        if (!uniqueMap.has(email)) {
-          uniqueMap.set(email, row);
+        if (!uniqueRows.has(email)) {
+          uniqueACount++;
+          uniqueRows.set(email, transformRow(row, email));
         }
       }
     }
   });
 
   // 2. Process File B
-  // Keep row IF email is NOT in A
   fileBData.forEach((row) => {
     const email = getEmail(row);
     if (email) {
       if (emailsA_Set.has(email)) {
-        overlapCount++; // It's common, so we toss it
+        overlapCount++;
+        skippedLog.push({ email, reason: "Common in A", source: "File B" });
       } else {
         // Unique to B
-        // Check if we already have it (internal duplicates in B)
-        if (!uniqueMap.has(email)) {
-          uniqueMap.set(email, row);
+        if (!uniqueRows.has(email)) {
+          uniqueBCount++;
+          uniqueRows.set(email, transformRow(row, email));
         }
       }
     }
   });
 
-  const uniqueRows = Array.from(uniqueMap.values());
+  const finalData = Array.from(uniqueRows.values());
 
-  statOverlap.textContent = overlapCount.toLocaleString();
-  statUniqueResult.textContent = uniqueRows.length.toLocaleString();
+  // Update Stats UI
+  statSkipped.textContent = overlapCount.toLocaleString();
+  statUniqueA.textContent = uniqueACount.toLocaleString();
+  statUniqueB.textContent = uniqueBCount.toLocaleString();
 
-  if (uniqueRows.length === 0 && overlapCount === 0) {
-    addLog("No valid data found in comparison.", "error");
-    return;
+  // Logic: Show Logs
+  if (skippedLog.length > 0) {
+    addLog(`Skipped ${overlapCount} overlapping records.`, "warning");
+    addLog(`--- SKIP DETAILS START ---`, "info");
+
+    const MAX_LOG = 100;
+    skippedLog.slice(0, MAX_LOG).forEach((item) => {
+      addLog(`[SKIP] ${item.email} (Found in both files)`, "warning");
+    });
+
+    if (skippedLog.length > MAX_LOG) {
+      addLog(
+        `... and ${skippedLog.length - MAX_LOG} more skipped records.`,
+        "info",
+      );
+    }
+    addLog(`--- SKIP DETAILS END ---`, "info");
   }
 
-  if (uniqueRows.length === 0) {
-    addLog(
-      "Analysis Complete. Files are identical (all records overlap).",
-      "warning",
-    );
-    addLog(`Removed ${overlapCount} common records.`, "warning");
-    // Still allow download? No, empty.
+  if (finalData.length === 0) {
+    addLog("Analysis Complete. No unique records found.", "warning");
   } else {
-    addLog(`Analysis Complete.`);
-    addLog(`Removed ${overlapCount} common overlapping records.`, "warning");
-    addLog(
-      `Identified ${uniqueRows.length} exclusive unique emails.`,
-      "success",
-    );
-    prepareChunks(uniqueRows);
+    addLog(`Analysis Complete.`, "success");
+    addLog(`Unique to File A: ${uniqueACount}`, "success");
+    addLog(`Unique to File B: ${uniqueBCount}`, "success");
+    prepareChunks(finalData);
   }
+}
+
+function transformRow(row, email) {
+  let firstName = "Applicant";
+  let lastName = "Applicant";
+
+  // Try to find Name column
+  const keys = Object.keys(row);
+
+  // Check for explicit First/Last
+  const keyFirst = keys.find(
+    (k) => k.toLowerCase().replace(/[^a-z]/g, "") === "firstname",
+  );
+  const keyLast = keys.find(
+    (k) => k.toLowerCase().replace(/[^a-z]/g, "") === "lastname",
+  );
+
+  if (keyFirst && row[keyFirst]) firstName = row[keyFirst];
+  if (keyLast && row[keyLast]) lastName = row[keyLast];
+
+  // If still defaults, check "Name" or "Full Name"
+  if (firstName === "Applicant" && lastName === "Applicant") {
+    const keyName = keys.find((k) =>
+      ["name", "fullname", "full name"].includes(k.toLowerCase().trim()),
+    );
+    if (keyName && row[keyName]) {
+      const parts = row[keyName].trim().split(/\s+/);
+      if (parts.length > 0) {
+        firstName = parts[0];
+        if (parts.length > 1) {
+          lastName = parts.slice(1).join(" ");
+        }
+      }
+    }
+  }
+
+  return {
+    "First Name": firstName,
+    "Last Name": lastName,
+    Email: email,
+  };
 }
 
 function prepareChunks(rows) {
@@ -239,7 +294,7 @@ function prepareChunks(rows) {
     splitChunks.push(rows.slice(i, i + CHUNK_SIZE));
   }
 
-  addLog(`Split into ${splitChunks.length} chunks.`);
+  addLog(`Formatted and Split into ${splitChunks.length} chunks.`);
 
   downloadWaiting.classList.add("hidden");
   downloadReady.classList.remove("hidden");
