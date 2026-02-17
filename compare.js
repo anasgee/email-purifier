@@ -70,27 +70,80 @@ function setupDropZone(zone, input, side) {
 setupDropZone(dropZoneA, fileInputA, "A");
 setupDropZone(dropZoneB, fileInputB, "B");
 
-function handleSelect(file, side) {
+async function handleSelect(file, side) {
   if (!file) return;
   if (!file.name.endsWith(".csv")) {
     alert("Please select a valid CSV file.");
     return;
   }
 
-  if (side === "A") {
-    fileA = file;
-    fileAName.textContent = file.name;
-    fileAName.style.color = "var(--accent-primary)";
-  } else {
-    fileB = file;
-    fileBName.textContent = file.name;
-    fileBName.style.color = "var(--accent-primary)";
-  }
+  const nameEl = side === "A" ? fileAName : fileBName;
+  const zone = side === "A" ? dropZoneA : dropZoneB;
 
-  if (fileA && fileB) {
-    startCompareBtn.disabled = false;
-    startCompareBtn.style.opacity = "1";
-    startCompareBtn.style.cursor = "pointer";
+  // Show Loading State
+  nameEl.innerHTML = `Analyzing ${file.name}... <i data-lucide="loader-2" class="spin"></i>`;
+  lucide.createIcons();
+
+  try {
+    // Immediate Parse
+    const data = await parseFile(file);
+
+    // Quick Pre-analysis
+    let valid = 0;
+    let invalid = 0;
+    const seen = new Set();
+    let dups = 0;
+
+    data.forEach((row) => {
+      const email = getEmail(row);
+      if (!email) {
+        invalid++;
+      } else {
+        if (seen.has(email)) {
+          dups++;
+        } else {
+          seen.add(email);
+          valid++;
+        }
+      }
+    });
+
+    // Update UI with Detail
+    const color = side === "A" ? "var(--accent-primary)" : "#f59e0b"; // Blue for A, Orange/Gold for B
+
+    let html = `<span style="font-weight:bold; color:${color}">${file.name}</span><br>`;
+    html += `<span style="font-size:0.85rem; color:#888;">`;
+    html += `Total: <b>${data.length.toLocaleString()}</b> | `;
+    html += `Valid: <b style="color:${color}">${valid.toLocaleString()}</b><br>`;
+    html += `Invalid: ${invalid > 0 ? `<span style='color:var(--accent-error)'>${invalid}</span>` : "0"} | `;
+    html += `Dups: ${dups > 0 ? `<span style='color:var(--accent-error)'>${dups}</span>` : "0"}`;
+    html += `</span>`;
+
+    nameEl.innerHTML = html;
+
+    // Store Data
+    if (side === "A") {
+      fileA = file;
+      fileAData = data;
+      dropZoneA.style.borderColor = "var(--accent-primary)";
+      dropZoneA.style.backgroundColor = "rgba(0, 255, 136, 0.05)";
+    } else {
+      fileB = file;
+      fileBData = data;
+      dropZoneB.style.borderColor = "#f59e0b";
+      dropZoneB.style.backgroundColor = "rgba(245, 158, 11, 0.05)";
+    }
+
+    // Enable Run Button if both ready
+    if (fileAData.length > 0 && fileBData.length > 0) {
+      startCompareBtn.disabled = false;
+      startCompareBtn.style.opacity = "1";
+      startCompareBtn.style.cursor = "pointer";
+    }
+  } catch (err) {
+    console.error(err);
+    nameEl.textContent = `Error reading file: ${err.message}`;
+    nameEl.style.color = "var(--accent-error)";
   }
 }
 
@@ -104,6 +157,12 @@ downloadResultBtn.addEventListener("click", downloadSplitZip);
 
 // Logic
 async function startComparison() {
+  // Check if data is loaded
+  if (!fileAData.length || !fileBData.length) {
+    alert("Please upload valid files first.");
+    return;
+  }
+
   // UI Switch
   compareView.classList.add("hidden");
   processingView.classList.remove("hidden");
@@ -112,25 +171,18 @@ async function startComparison() {
   setStatus("processing");
   addLog(`Starting comparison...`);
 
-  try {
-    // Parse File A
-    addLog(`Reading File A: ${fileA.name}...`);
-    fileAData = await parseFile(fileA);
-    addLog(`File A Rows: ${fileAData.length}`);
-    statTotalA.textContent = fileAData.length.toLocaleString();
+  // We already parsed in handleSelect, so just populate Stats and Run
+  statTotalA.textContent = fileAData.length.toLocaleString();
+  statTotalB.textContent = fileBData.length.toLocaleString();
 
-    // Parse File B
-    addLog(`Reading File B: ${fileB.name}...`);
-    fileBData = await parseFile(fileB);
-    addLog(`File B Rows: ${fileBData.length}`);
-    statTotalB.textContent = fileBData.length.toLocaleString();
-
-    // Analyze
-    performExclusiveCompare();
-  } catch (err) {
-    addLog(`Error: ${err.message}`, "error");
-    setStatus("error");
-  }
+  setTimeout(() => {
+    try {
+      performExclusiveCompare();
+    } catch (err) {
+      addLog(`Error: ${err.message}`, "error");
+      setStatus("error");
+    }
+  }, 500); // Small delay to allow UI to switch
 }
 
 function parseFile(file) {
@@ -292,6 +344,9 @@ function performExclusiveCompare() {
   // Final Summary
   if (finalData.length === 0) {
     addLog("Analysis Complete. No unique records found.", "warning");
+    setStatus("complete");
+    downloadWaiting.classList.add("hidden");
+    addLog("Result is empty. Nothing to download.", "info");
   } else {
     addLog(`Comparison Complete.`, "success");
     addLog(`Unique records from A: ${uniqueACount}`, "success");
