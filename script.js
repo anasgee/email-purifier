@@ -32,6 +32,8 @@ const statDuplicatesEl = document.getElementById("stat-duplicates");
 let inputFiles = [];
 let processedFilesData = []; // Array of { name: "filename", data: [rows] }
 let globalSeenEmails = new Set();
+let currentMode = "standard"; // 'standard' | 'splitter'
+let splitChunks = []; // Store chunks for splitter mode
 let stats = {
   total: 0,
   valid: 0,
@@ -40,8 +42,33 @@ let stats = {
   corrected: 0,
 };
 
+// Mode Elements
+const tabStandard = document.getElementById("tab-standard");
+const tabSplitter = document.getElementById("tab-splitter");
+const modeBadge = document.getElementById("mode-badge");
+const downloadSplitZipBtn = document.getElementById("download-split-zip-btn");
+
 // Event Listeners
 selectFileBtn.addEventListener("click", () => fileInput.click());
+
+// Mode Switchers
+tabStandard.addEventListener("click", () => setMode("standard"));
+tabSplitter.addEventListener("click", () => setMode("splitter"));
+
+function setMode(mode) {
+  currentMode = mode;
+
+  // UI Tabs
+  if (mode === "standard") {
+    tabStandard.classList.add("active");
+    tabSplitter.classList.remove("active");
+    modeBadge.textContent = "STANDARD MODE";
+  } else {
+    tabSplitter.classList.add("active");
+    tabStandard.classList.remove("active");
+    modeBadge.textContent = "BULK SPLITTER (4999)";
+  }
+}
 
 fileInput.addEventListener("change", (e) => {
   if (e.target.files.length > 0) {
@@ -87,6 +114,11 @@ downloadZipBtn.addEventListener("click", (e) => {
   downloadZIP();
 });
 
+downloadSplitZipBtn.addEventListener("click", (e) => {
+  e.preventDefault();
+  downloadSplitZip();
+});
+
 downloadInvalidBtn.addEventListener("click", (e) => {
   e.preventDefault();
   downloadInvalidCSV();
@@ -103,9 +135,11 @@ async function startProcessing(files) {
   uploadView.classList.add("hidden");
   processingView.classList.remove("hidden");
   processingView.classList.add("flex-col");
+  document.querySelector(".feature-nav").classList.add("hidden"); // Hide tabs during processing
 
   // Reset State
   processedFilesData = [];
+  splitChunks = [];
   globalSeenEmails.clear();
   stats = { total: 0, valid: 0, duplicates: 0, invalid: 0, corrected: 0 };
 
@@ -113,7 +147,9 @@ async function startProcessing(files) {
   updateStatsUI();
   setStatus("processing");
 
-  addLog(`Received ${files.length} file(s) for processing.`);
+  addLog(
+    `Received ${files.length} file(s) for processing in ${currentMode.toUpperCase()} mode.`,
+  );
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
@@ -325,23 +361,39 @@ function finishProcessing() {
   downloadWaiting.classList.add("hidden");
   downloadReady.classList.remove("hidden");
 
-  // Determine button visibility
-  if (processedFilesData.length === 1) {
-    // Single file mode
-    downloadMergedBtn.classList.add("hidden");
-    downloadZipBtn.classList.add("hidden");
-    downloadLink.classList.remove("hidden");
-    downloadLink.style.display = "flex"; // Ensure flex layout
+  // Reset buttons
+  downloadLink.classList.add("hidden");
+  downloadMergedBtn.classList.add("hidden");
+  downloadZipBtn.classList.add("hidden");
+  downloadSplitZipBtn.classList.add("hidden");
 
-    // Prepare single download
-    prepareSingleDownload(processedFilesData[0]);
+  if (currentMode === "splitter") {
+    // --- SPLITTER MODE ---
+    addLog("Splitter Mode: Aggregating and chunking data...", "info");
+    prepareSplitBatches();
+    downloadSplitZipBtn.classList.remove("hidden");
+    downloadSplitZipBtn.style.display = "flex";
+
+    // Update text
+    const readyTitle = document.querySelector("#download-ready h3");
+    const readyText = document.querySelector("#download-ready p");
+    readyTitle.textContent = "Batches Ready";
+    readyText.textContent = `Data split into ${splitChunks.length} files (Max 4999 records each).`;
   } else {
-    // Multiple files mode
-    downloadLink.classList.add("hidden");
-    downloadMergedBtn.classList.remove("hidden");
-    downloadZipBtn.classList.remove("hidden");
-    downloadMergedBtn.style.display = "flex";
-    downloadZipBtn.style.display = "flex";
+    // --- STANDARD MODE ---
+    // Determine button visibility
+    if (processedFilesData.length === 1) {
+      // Single file mode
+      downloadLink.classList.remove("hidden");
+      downloadLink.style.display = "flex"; // Ensure flex layout
+      prepareSingleDownload(processedFilesData[0]);
+    } else {
+      // Multiple files mode
+      downloadMergedBtn.classList.remove("hidden");
+      downloadZipBtn.classList.remove("hidden");
+      downloadMergedBtn.style.display = "flex";
+      downloadZipBtn.style.display = "flex";
+    }
   }
 
   // Toggle Invalid Button
@@ -353,6 +405,68 @@ function finishProcessing() {
   }
 
   addLog("All files processed successfully.", "success");
+}
+
+function prepareSplitBatches() {
+  // 1. Aggregate and Re-Deduplicate
+  // Although we deduplicate during ingestion, this extra pass ensures
+  // absolute uniqueness for the bulk export, especially against any edge cases.
+  const uniqueMap = new Map();
+
+  processedFilesData.forEach((fileData) => {
+    fileData.rows.forEach((row) => {
+      if (row.Email) {
+        const normalizedKey = row.Email.toLowerCase().trim();
+
+        // Only add if not already present in our export set
+        if (!uniqueMap.has(normalizedKey)) {
+          uniqueMap.set(normalizedKey, row);
+        }
+      }
+    });
+  });
+
+  const allRows = Array.from(uniqueMap.values());
+
+  // 2. Split into chunks of 4999
+  const CHUNK_SIZE = 4999;
+  splitChunks = [];
+  for (let i = 0; i < allRows.length; i += CHUNK_SIZE) {
+    splitChunks.push(allRows.slice(i, i + CHUNK_SIZE));
+  }
+
+  addLog(`Aggregation Complete: ${allRows.length} unique records prepared.`);
+  addLog(
+    `Generated ${splitChunks.length} split batches (Max ${CHUNK_SIZE} per file).`,
+  );
+}
+
+function downloadSplitZip() {
+  if (splitChunks.length === 0) return;
+
+  const zip = new JSZip();
+
+  // Add each chunk
+  splitChunks.forEach((chunk, index) => {
+    const csv = Papa.unparse(chunk);
+    // Naming: batch_1_4999.csv, batch_2_...
+    const start = index * 4999 + 1;
+    const end = start + chunk.length - 1;
+    zip.file(`batch_${index + 1}_(${start}-${end}).csv`, csv);
+  });
+
+  zip.generateAsync({ type: "blob" }).then(function (content) {
+    const url = URL.createObjectURL(content);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "split_batches_archive.zip";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    // Clean up
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
 }
 
 // --- Download Helpers ---
@@ -590,19 +704,29 @@ function resetSystem() {
   inputFiles = [];
   processedFilesData = [];
   fileInput.value = "";
+  splitChunks = [];
 
   // UI Reset
   uploadView.classList.remove("hidden");
   processingView.classList.add("hidden");
   processingView.classList.remove("flex-col");
+  document.querySelector(".feature-nav").classList.remove("hidden"); // Show items again
 
   downloadReady.classList.add("hidden");
   downloadWaiting.classList.remove("hidden");
+
+  // Reset Text
+  const readyTitle = document.querySelector("#download-ready h3");
+  const readyText = document.querySelector("#download-ready p");
+  readyTitle.textContent = "Ready for Export";
+  readyText.textContent =
+    "Data has been successfully transformed and optimized.";
 
   // Hide all download buttons
   downloadLink.classList.add("hidden");
   downloadMergedBtn.classList.add("hidden");
   downloadZipBtn.classList.add("hidden");
+  downloadSplitZipBtn.classList.add("hidden");
 
   logContent.innerHTML = "";
 }
