@@ -43,11 +43,15 @@
               <i data-lucide="layers" width="18" height="18"></i>
               Bulk Splitter (4999 Limit)
             </button>
+            <button id="tab-compare" class="nav-tab">
+              <i data-lucide="git-compare" width="18" height="18"></i>
+              Compare Two Files
+            </button>
           </div>
 
           <!-- Application Container -->
           <div id="app-container" class="w-full">
-            <!-- Upload View -->
+            <!-- Upload View (Standard) -->
             <div id="upload-view" class="card-panel upload-view">
               <div id="drop-zone" class="upload-area">
                 <input
@@ -91,6 +95,36 @@
                   <span>Select from System</span>
                 </button>
               </div>
+            </div>
+
+            <!-- Compare View (Side-by-Side) -->
+            <div id="compare-view" class="hidden w-full flex-col gap-md">
+               <div class="grid-console" style="grid-template-columns: 1fr 1fr; margin-bottom: 2rem;">
+                  <!-- File A Zone -->
+                  <div id="drop-zone-a" class="upload-area" style="padding: 2rem;">
+                     <input type="file" id="file-input-a" accept=".csv" class="hidden" style="display:none">
+                     <div class="upload-icon"><i data-lucide="file" width="40" height="40"></i></div>
+                     <h3 style="font-size: 1.2rem; margin-bottom: 0.5rem;">File A</h3>
+                     <p id="file-a-name" style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 1rem;">No file selected</p>
+                     <button id="btn-select-a" class="btn btn-ghost btn-sm">Select File A</button>
+                  </div>
+
+                  <!-- File B Zone -->
+                  <div id="drop-zone-b" class="upload-area" style="padding: 2rem;">
+                     <input type="file" id="file-input-b" accept=".csv" class="hidden" style="display:none">
+                     <div class="upload-icon"><i data-lucide="file" width="40" height="40"></i></div>
+                     <h3 style="font-size: 1.2rem; margin-bottom: 0.5rem;">File B</h3>
+                     <p id="file-b-name" style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 1rem;">No file selected</p>
+                     <button id="btn-select-b" class="btn btn-ghost btn-sm">Select File B</button>
+                  </div>
+               </div>
+               
+               <div class="flex-col items-center justify-center">
+                  <button id="start-compare-btn" class="btn btn-primary" disabled style="opacity: 0.5; cursor: not-allowed;">
+                    <i data-lucide="git-compare" width="20" height="20"></i>
+                    Run Comparison & Split
+                  </button>
+               </div>
             </div>
 
             <!-- Processing View (Hidden initially) -->
@@ -154,6 +188,38 @@
                     Total Input
                   </h4>
                   <span id="stat-total" class="stat-value">0</span>
+                </div>
+
+                <div
+                  class="stat-card"
+                  style="
+                    border-color: #3b82f6; /* Blue for unique */
+                    animation-delay: 0.15s;
+                  "
+                >
+                  <i
+                    data-lucide="users"
+                    style="color: #3b82f6;"
+                    width="32"
+                    height="32"
+                    style="margin-bottom: 1rem"
+                  ></i>
+                  <h4
+                    style="
+                      color: #3b82f6;
+                      font-size: 0.8rem;
+                      text-transform: uppercase;
+                      letter-spacing: 1px;
+                    "
+                  >
+                    Unique Contacts
+                  </h4>
+                  <span
+                    id="stat-unique"
+                    class="stat-value"
+                    style="color: #3b82f6;"
+                    >0</span
+                  >
                 </div>
 
                 <div

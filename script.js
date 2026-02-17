@@ -27,9 +27,12 @@ const statTotalEl = document.getElementById("stat-total");
 const statValidEl = document.getElementById("stat-valid");
 const statFilteredEl = document.getElementById("stat-filtered");
 const statDuplicatesEl = document.getElementById("stat-duplicates");
+const statUniqueEl = document.getElementById("stat-unique");
 
 // State
 let inputFiles = [];
+let fileA = null;
+let fileB = null;
 let processedFilesData = []; // Array of { name: "filename", data: [rows] }
 let globalSeenEmails = new Set();
 let currentMode = "standard"; // 'standard' | 'splitter'
@@ -37,10 +40,32 @@ let splitChunks = []; // Store chunks for splitter mode
 let stats = {
   total: 0,
   valid: 0,
+  unique: 0,
   duplicates: 0,
   invalid: 0,
   corrected: 0,
+  intersection: 0,
 };
+
+// ... (Rest of code remains same until analyzeFileContent)
+
+// Inside analyzeFileContent:
+// Valid & New
+// globalSeenEmails.add(normalizedEmail);
+// stats.valid++;
+// stats.unique = globalSeenEmails.size; // Update unique count
+
+// ...
+
+function updateStatsUI() {
+  statTotalEl.textContent = stats.total.toLocaleString();
+  statValidEl.textContent = stats.valid.toLocaleString();
+  statDuplicatesEl.textContent = stats.duplicates.toLocaleString();
+  statFilteredEl.textContent = stats.invalid.toLocaleString();
+  statUniqueEl.textContent = stats.unique.toLocaleString();
+  document.getElementById("stat-corrected").textContent =
+    stats.corrected.toLocaleString();
+}
 
 // Mode Elements
 const tabStandard = document.getElementById("tab-standard");
@@ -130,6 +155,92 @@ async function handleFileSelect(files) {
   startProcessing(files);
 }
 
+// Compare Logic Main
+async function startComparisonProcessing() {
+  // Switch to Processing View
+  compareView.classList.add("hidden");
+  processingView.classList.remove("hidden");
+  processingView.classList.add("flex-col");
+  document.querySelector(".feature-nav").classList.add("hidden");
+
+  // Reset State
+  processedFilesData = [];
+  splitChunks = [];
+  globalSeenEmails.clear();
+  stats = {
+    total: 0,
+    valid: 0,
+    unique: 0,
+    duplicates: 0,
+    invalid: 0,
+    corrected: 0,
+    intersection: 0,
+  };
+
+  logContent.innerHTML = "";
+  updateStatsUI();
+  setStatus("processing");
+
+  addLog(`Starting comparison of: [${fileA.name}] vs [${fileB.name}]`);
+
+  // Process Both
+  try {
+    addLog(`Analyzing File A: ${fileA.name}...`);
+    await processSingleFile(fileA);
+
+    addLog(`Analyzing File B: ${fileB.name}...`);
+    await processSingleFile(fileB);
+
+    finishProcessing();
+  } catch (err) {
+    addLog(`Error during comparison: ${err.message}`, "error");
+    setStatus("error");
+  }
+}
+
+// Compare Logic Main
+async function startComparisonProcessing() {
+  // Switch to Processing View
+  compareView.classList.add("hidden");
+  processingView.classList.remove("hidden");
+  processingView.classList.add("flex-col");
+  document.querySelector(".feature-nav").classList.add("hidden");
+
+  // Reset State
+  processedFilesData = [];
+  splitChunks = [];
+  globalSeenEmails.clear();
+  stats = {
+    total: 0,
+    valid: 0,
+    unique: 0,
+    duplicates: 0,
+    invalid: 0,
+    corrected: 0,
+    intersection: 0,
+  };
+
+  logContent.innerHTML = "";
+  updateStatsUI();
+  setStatus("processing");
+
+  addLog(`Starting comparison of: [${fileA.name}] vs [${fileB.name}]`);
+
+  // Process Both
+  try {
+    addLog(`Analyzing File A: ${fileA.name}...`);
+    await processSingleFile(fileA);
+
+    addLog(`Analyzing File B: ${fileB.name}...`);
+    await processSingleFile(fileB);
+
+    finishProcessing();
+  } catch (err) {
+    addLog(`Error during comparison: ${err.message}`, "error");
+    setStatus("error");
+  }
+}
+
 async function startProcessing(files) {
   // Switch View
   uploadView.classList.add("hidden");
@@ -141,7 +252,14 @@ async function startProcessing(files) {
   processedFilesData = [];
   splitChunks = [];
   globalSeenEmails.clear();
-  stats = { total: 0, valid: 0, duplicates: 0, invalid: 0, corrected: 0 };
+  stats = {
+    total: 0,
+    valid: 0,
+    unique: 0,
+    duplicates: 0,
+    invalid: 0,
+    corrected: 0,
+  };
 
   logContent.innerHTML = "";
   updateStatsUI();
@@ -323,6 +441,7 @@ function analyzeFileContent(fileName, data, fields) {
       // Valid & New
       globalSeenEmails.add(normalizedEmail);
       stats.valid++;
+      stats.unique = globalSeenEmails.size; // Update unique count
 
       // Clean phone
       const cleanPhone = phone ? phone.replace(/[^0-9+]/g, "") : "";
@@ -367,9 +486,46 @@ function finishProcessing() {
   downloadZipBtn.classList.add("hidden");
   downloadSplitZipBtn.classList.add("hidden");
 
-  if (currentMode === "splitter") {
-    // --- SPLITTER MODE ---
-    addLog("Splitter Mode: Aggregating and chunking data...", "info");
+  if (currentMode === "splitter" || currentMode === "compare") {
+    // --- SPLITTER & COMPARE MODE ---
+
+    if (currentMode === "compare" && processedFilesData.length >= 2) {
+      // Perform Comparison Logic to log stats
+      addLog("Calculating comparison statistics...", "info");
+
+      const fileAEmails = new Set();
+      processedFilesData[0].rows.forEach((r) =>
+        fileAEmails.add(r.Email.toLowerCase().trim()),
+      );
+
+      const fileBEmails = new Set();
+      processedFilesData[1].rows.forEach((r) =>
+        fileBEmails.add(r.Email.toLowerCase().trim()),
+      );
+
+      let intersectionCount = 0;
+      fileAEmails.forEach((email) => {
+        if (fileBEmails.has(email)) intersectionCount++;
+      });
+
+      // Log Specifics
+      addLog(`Comparison Results:`, "success");
+      addLog(
+        `File A Unique: ${fileAEmails.size - intersectionCount} rows (excl. overlap)`,
+      );
+      addLog(
+        `File B Unique: ${fileBEmails.size - intersectionCount} rows (excl. overlap)`,
+      );
+      addLog(`Overlap (Common in both): ${intersectionCount} rows`, "warning");
+      addLog(`Total Unique (Union): ${stats.unique} rows`);
+    }
+
+    addLog(
+      currentMode === "compare"
+        ? "Preparing clean union set..."
+        : "Splitter Mode: Aggregating and chunking data...",
+      "info",
+    );
     prepareSplitBatches();
     downloadSplitZipBtn.classList.remove("hidden");
     downloadSplitZipBtn.style.display = "flex";
@@ -377,7 +533,8 @@ function finishProcessing() {
     // Update text
     const readyTitle = document.querySelector("#download-ready h3");
     const readyText = document.querySelector("#download-ready p");
-    readyTitle.textContent = "Batches Ready";
+    readyTitle.textContent =
+      currentMode === "compare" ? "Comparison Result Ready" : "Batches Ready";
     readyText.textContent = `Data split into ${splitChunks.length} files (Max 4999 records each).`;
   } else {
     // --- STANDARD MODE ---
@@ -675,6 +832,7 @@ function updateStatsUI() {
   statValidEl.textContent = stats.valid.toLocaleString();
   statDuplicatesEl.textContent = stats.duplicates.toLocaleString();
   statFilteredEl.textContent = stats.invalid.toLocaleString();
+  if (statUniqueEl) statUniqueEl.textContent = stats.unique.toLocaleString();
   document.getElementById("stat-corrected").textContent =
     stats.corrected.toLocaleString();
 }
