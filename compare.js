@@ -456,7 +456,7 @@ function downloadFullCSV(rows, filename) {
 
 // Download: Chunked ZIP (4999 per file)
 function formatK(num) {
-  if (num >= 1000) return num / 1000 + "K";
+  if (num >= 1000) return num / 1000 + "k";
   return num.toString();
 }
 
@@ -474,7 +474,7 @@ function downloadChunkedZip(rows, filename) {
     const batchIndex = Math.floor(i / CHUNK_SIZE);
     const startLabel = batchIndex === 0 ? "1" : formatK(batchIndex * 5000);
     const endLabel = formatK((batchIndex + 1) * 5000);
-    const chunkName = `SDP-${startLabel}-${endLabel} Data Import.csv`;
+    const chunkName = `SDP ${startLabel}-${endLabel} Batch Import.csv`;
     const csv = Papa.unparse(chunk);
     zip.file(chunkName, csv);
   }
