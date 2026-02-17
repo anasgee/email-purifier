@@ -70,7 +70,20 @@ function updateStatsUI() {
 // Mode Elements
 const tabStandard = document.getElementById("tab-standard");
 const tabSplitter = document.getElementById("tab-splitter");
+const tabCompare = document.getElementById("tab-compare"); // New
 const modeBadge = document.getElementById("mode-badge");
+
+// Compare View Elements
+const compareView = document.getElementById("compare-view");
+const dropZoneA = document.getElementById("drop-zone-a");
+const dropZoneB = document.getElementById("drop-zone-b");
+const fileInputA = document.getElementById("file-input-a");
+const fileInputB = document.getElementById("file-input-b");
+const btnSelectA = document.getElementById("btn-select-a");
+const btnSelectB = document.getElementById("btn-select-b");
+const fileAName = document.getElementById("file-a-name");
+const fileBName = document.getElementById("file-b-name");
+const startCompareBtn = document.getElementById("start-compare-btn");
 const downloadSplitZipBtn = document.getElementById("download-split-zip-btn");
 
 // Event Listeners
@@ -79,21 +92,76 @@ selectFileBtn.addEventListener("click", () => fileInput.click());
 // Mode Switchers
 tabStandard.addEventListener("click", () => setMode("standard"));
 tabSplitter.addEventListener("click", () => setMode("splitter"));
+tabCompare.addEventListener("click", () => setMode("compare"));
 
 function setMode(mode) {
   currentMode = mode;
+  resetSystem(); // Reset when switching
+  currentMode = mode; // Reset likely clears it, so enforce again
 
-  // UI Tabs
+  // UI Tabs & Views
+  tabStandard.classList.remove("active");
+  tabSplitter.classList.remove("active");
+  tabCompare.classList.remove("active");
+
+  uploadView.classList.add("hidden");
+  compareView.classList.add("hidden");
+
   if (mode === "standard") {
     tabStandard.classList.add("active");
-    tabSplitter.classList.remove("active");
     modeBadge.textContent = "STANDARD MODE";
-  } else {
+    uploadView.classList.remove("hidden");
+  } else if (mode === "splitter") {
     tabSplitter.classList.add("active");
-    tabStandard.classList.remove("active");
     modeBadge.textContent = "BULK SPLITTER (4999)";
+    uploadView.classList.remove("hidden");
+  } else if (mode === "compare") {
+    tabCompare.classList.add("active");
+    modeBadge.textContent = "FILE COMPARISON";
+    compareView.classList.remove("hidden");
+    compareView.style.display = "flex"; // Ensure flex
   }
 }
+
+// Compare View Handlers
+btnSelectA.addEventListener("click", () => fileInputA.click());
+btnSelectB.addEventListener("click", () => fileInputB.click());
+
+fileInputA.addEventListener("change", (e) =>
+  handleCompareSelect(e.target.files[0], "A"),
+);
+fileInputB.addEventListener("change", (e) =>
+  handleCompareSelect(e.target.files[0], "B"),
+);
+
+function handleCompareSelect(file, side) {
+  if (!file) return;
+  if (!file.name.endsWith(".csv")) {
+    alert("Please select a valid CSV file.");
+    return;
+  }
+
+  if (side === "A") {
+    fileA = file;
+    fileAName.textContent = file.name;
+    fileAName.style.color = "var(--accent-primary)";
+  } else {
+    fileB = file;
+    fileBName.textContent = file.name;
+    fileBName.style.color = "var(--accent-primary)";
+  }
+
+  // Enable button if both present
+  if (fileA && fileB) {
+    startCompareBtn.disabled = false;
+    startCompareBtn.style.opacity = "1";
+    startCompareBtn.style.cursor = "pointer";
+  }
+}
+
+startCompareBtn.addEventListener("click", () => {
+  if (fileA && fileB) startComparisonProcessing();
+});
 
 fileInput.addEventListener("change", (e) => {
   if (e.target.files.length > 0) {
