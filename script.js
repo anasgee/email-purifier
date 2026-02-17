@@ -70,20 +70,8 @@ function updateStatsUI() {
 // Mode Elements
 const tabStandard = document.getElementById("tab-standard");
 const tabSplitter = document.getElementById("tab-splitter");
-const tabCompare = document.getElementById("tab-compare"); // New
 const modeBadge = document.getElementById("mode-badge");
 
-// Compare View Elements
-const compareView = document.getElementById("compare-view");
-const dropZoneA = document.getElementById("drop-zone-a");
-const dropZoneB = document.getElementById("drop-zone-b");
-const fileInputA = document.getElementById("file-input-a");
-const fileInputB = document.getElementById("file-input-b");
-const btnSelectA = document.getElementById("btn-select-a");
-const btnSelectB = document.getElementById("btn-select-b");
-const fileAName = document.getElementById("file-a-name");
-const fileBName = document.getElementById("file-b-name");
-const startCompareBtn = document.getElementById("start-compare-btn");
 const downloadSplitZipBtn = document.getElementById("download-split-zip-btn");
 
 // Event Listeners
@@ -92,7 +80,6 @@ selectFileBtn.addEventListener("click", () => fileInput.click());
 // Mode Switchers
 tabStandard.addEventListener("click", () => setMode("standard"));
 tabSplitter.addEventListener("click", () => setMode("splitter"));
-tabCompare.addEventListener("click", () => setMode("compare"));
 
 function setMode(mode) {
   currentMode = mode;
@@ -102,60 +89,19 @@ function setMode(mode) {
   // UI Tabs & Views
   tabStandard.classList.remove("active");
   tabSplitter.classList.remove("active");
-  tabCompare.classList.remove("active");
 
   uploadView.classList.add("hidden");
-  compareView.classList.add("hidden");
 
-  if (mode === "standard") {
-    tabStandard.classList.add("active");
-    modeBadge.textContent = "STANDARD MODE";
-    uploadView.classList.remove("hidden");
-  } else if (mode === "splitter") {
+  if (mode === "splitter") {
     tabSplitter.classList.add("active");
     modeBadge.textContent = "BULK SPLITTER (4999)";
     uploadView.classList.remove("hidden");
-  } else if (mode === "compare") {
-    tabCompare.classList.add("active");
-    modeBadge.textContent = "FILE COMPARISON";
-    compareView.classList.remove("hidden");
-    compareView.style.display = "flex"; // Ensure flex
-  }
-}
-
-// Compare View Handlers
-btnSelectA.addEventListener("click", () => fileInputA.click());
-btnSelectB.addEventListener("click", () => fileInputB.click());
-
-fileInputA.addEventListener("change", (e) =>
-  handleCompareSelect(e.target.files[0], "A"),
-);
-fileInputB.addEventListener("change", (e) =>
-  handleCompareSelect(e.target.files[0], "B"),
-);
-
-function handleCompareSelect(file, side) {
-  if (!file) return;
-  if (!file.name.endsWith(".csv")) {
-    alert("Please select a valid CSV file.");
-    return;
-  }
-
-  if (side === "A") {
-    fileA = file;
-    fileAName.textContent = file.name;
-    fileAName.style.color = "var(--accent-primary)";
   } else {
-    fileB = file;
-    fileBName.textContent = file.name;
-    fileBName.style.color = "var(--accent-primary)";
-  }
-
-  // Enable button if both present
-  if (fileA && fileB) {
-    startCompareBtn.disabled = false;
-    startCompareBtn.style.opacity = "1";
-    startCompareBtn.style.cursor = "pointer";
+    // Standard default
+    currentMode = "standard";
+    tabStandard.classList.add("active");
+    modeBadge.textContent = "STANDARD MODE";
+    uploadView.classList.remove("hidden");
   }
 }
 
@@ -221,92 +167,6 @@ downloadInvalidBtn.addEventListener("click", (e) => {
 async function handleFileSelect(files) {
   inputFiles = files;
   startProcessing(files);
-}
-
-// Compare Logic Main
-async function startComparisonProcessing() {
-  // Switch to Processing View
-  compareView.classList.add("hidden");
-  processingView.classList.remove("hidden");
-  processingView.classList.add("flex-col");
-  document.querySelector(".feature-nav").classList.add("hidden");
-
-  // Reset State
-  processedFilesData = [];
-  splitChunks = [];
-  globalSeenEmails.clear();
-  stats = {
-    total: 0,
-    valid: 0,
-    unique: 0,
-    duplicates: 0,
-    invalid: 0,
-    corrected: 0,
-    intersection: 0,
-  };
-
-  logContent.innerHTML = "";
-  updateStatsUI();
-  setStatus("processing");
-
-  addLog(`Starting comparison of: [${fileA.name}] vs [${fileB.name}]`);
-
-  // Process Both
-  try {
-    addLog(`Analyzing File A: ${fileA.name}...`);
-    await processSingleFile(fileA);
-
-    addLog(`Analyzing File B: ${fileB.name}...`);
-    await processSingleFile(fileB);
-
-    finishProcessing();
-  } catch (err) {
-    addLog(`Error during comparison: ${err.message}`, "error");
-    setStatus("error");
-  }
-}
-
-// Compare Logic Main
-async function startComparisonProcessing() {
-  // Switch to Processing View
-  compareView.classList.add("hidden");
-  processingView.classList.remove("hidden");
-  processingView.classList.add("flex-col");
-  document.querySelector(".feature-nav").classList.add("hidden");
-
-  // Reset State
-  processedFilesData = [];
-  splitChunks = [];
-  globalSeenEmails.clear();
-  stats = {
-    total: 0,
-    valid: 0,
-    unique: 0,
-    duplicates: 0,
-    invalid: 0,
-    corrected: 0,
-    intersection: 0,
-  };
-
-  logContent.innerHTML = "";
-  updateStatsUI();
-  setStatus("processing");
-
-  addLog(`Starting comparison of: [${fileA.name}] vs [${fileB.name}]`);
-
-  // Process Both
-  try {
-    addLog(`Analyzing File A: ${fileA.name}...`);
-    await processSingleFile(fileA);
-
-    addLog(`Analyzing File B: ${fileB.name}...`);
-    await processSingleFile(fileB);
-
-    finishProcessing();
-  } catch (err) {
-    addLog(`Error during comparison: ${err.message}`, "error");
-    setStatus("error");
-  }
 }
 
 async function startProcessing(files) {
