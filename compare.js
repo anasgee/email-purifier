@@ -28,6 +28,10 @@ const statTotalB = document.getElementById("stat-total-b");
 const statUniqueA = document.getElementById("stat-unique-a");
 const statUniqueB = document.getElementById("stat-unique-b");
 const statSkipped = document.getElementById("stat-skipped");
+const statUniqueTotal = document.getElementById("stat-unique-total");
+const statInvalidA = document.getElementById("stat-invalid-a");
+const statInvalidB = document.getElementById("stat-invalid-b");
+const statInvalidTotal = document.getElementById("stat-invalid-total");
 
 // State
 let fileA = null;
@@ -154,58 +158,99 @@ function getEmail(row) {
 }
 
 function performExclusiveCompare() {
-  addLog("Analyzing dataset for overlaps...", "info");
+  addLog("Analysis Started...", "info");
 
-  // sets for fast lookup of existence
-  const emailsA_Set = new Set();
+  // --- Pre-Process File A ---
+  const emailsA_Map = new Map(); // Email -> Row
+  let invalidA = 0;
+  let duplicatesA = 0;
+
   fileAData.forEach((row) => {
     const email = getEmail(row);
-    if (email) emailsA_Set.add(email);
+    if (!email) {
+      invalidA++;
+    } else {
+      if (emailsA_Map.has(email)) {
+        duplicatesA++;
+      } else {
+        emailsA_Map.set(email, row);
+      }
+    }
   });
 
-  const emailsB_Set = new Set();
+  addLog(`[File A Stats] Total Rows: ${fileAData.length}`, "info");
+  if (invalidA > 0)
+    addLog(`[File A] Removed ${invalidA} invalid/empty email rows.`, "warning");
+  if (duplicatesA > 0)
+    addLog(
+      `[File A] Removed ${duplicatesA} internal duplicate rows.`,
+      "warning",
+    );
+  addLog(
+    `[File A] Valid Unique Emails to Compare: ${emailsA_Map.size}`,
+    "success",
+  );
+
+  // --- Pre-Process File B ---
+  const emailsB_Map = new Map(); // Email -> Row
+  let invalidB = 0;
+  let duplicatesB = 0;
+
   fileBData.forEach((row) => {
     const email = getEmail(row);
-    if (email) emailsB_Set.add(email);
+    if (!email) {
+      invalidB++;
+    } else {
+      if (emailsB_Map.has(email)) {
+        duplicatesB++;
+      } else {
+        emailsB_Map.set(email, row);
+      }
+    }
   });
+
+  addLog(`[File B Stats] Total Rows: ${fileBData.length}`, "info");
+  if (invalidB > 0)
+    addLog(`[File B] Removed ${invalidB} invalid/empty email rows.`, "warning");
+  if (duplicatesB > 0)
+    addLog(
+      `[File B] Removed ${duplicatesB} internal duplicate rows.`,
+      "warning",
+    );
+  addLog(
+    `[File B] Valid Unique Emails to Compare: ${emailsB_Map.size}`,
+    "success",
+  );
+
+  // --- Comparison Logic ---
+  addLog("Comparing valid unique sets...", "info");
 
   let overlapCount = 0;
   let uniqueACount = 0;
   let uniqueBCount = 0;
 
-  const uniqueRows = new Map(); // deduplicated result map
+  const uniqueRows = new Map();
   const skippedLog = [];
 
-  // 1. Process File A
-  fileAData.forEach((row) => {
-    const email = getEmail(row);
-    if (email) {
-      if (emailsB_Set.has(email)) {
-        overlapCount++;
-        skippedLog.push({ email, reason: "Common in B", source: "File A" });
-      } else {
-        // Unique to A
-        if (!uniqueRows.has(email)) {
-          uniqueACount++;
-          uniqueRows.set(email, transformRow(row, email));
-        }
-      }
+  // 1. Check A against B
+  emailsA_Map.forEach((row, email) => {
+    if (emailsB_Map.has(email)) {
+      overlapCount++;
+      skippedLog.push({ email, reason: "Common in B", source: "File A" });
+    } else {
+      uniqueACount++;
+      uniqueRows.set(email, transformRow(row, email));
     }
   });
 
-  // 2. Process File B
-  fileBData.forEach((row) => {
-    const email = getEmail(row);
-    if (email) {
-      if (emailsA_Set.has(email)) {
-        overlapCount++;
-        skippedLog.push({ email, reason: "Common in A", source: "File B" });
-      } else {
-        // Unique to B
-        if (!uniqueRows.has(email)) {
-          uniqueBCount++;
-          uniqueRows.set(email, transformRow(row, email));
-        }
+  // 2. Check B against A
+  emailsB_Map.forEach((row, email) => {
+    if (emailsA_Map.has(email)) {
+      // Already counted overlap in A loop or will be skipped.
+    } else {
+      uniqueBCount++;
+      if (!uniqueRows.has(email)) {
+        uniqueRows.set(email, transformRow(row, email));
       }
     }
   });
@@ -213,13 +258,19 @@ function performExclusiveCompare() {
   const finalData = Array.from(uniqueRows.values());
 
   // Update Stats UI
-  statSkipped.textContent = overlapCount.toLocaleString();
+  statSkipped.textContent = overlapCount.toLocaleString(); // Matches "Emails in both"
   statUniqueA.textContent = uniqueACount.toLocaleString();
   statUniqueB.textContent = uniqueBCount.toLocaleString();
+  statUniqueTotal.textContent = finalData.length.toLocaleString();
+
+  const totalInvalid = invalidA + duplicatesA + invalidB + duplicatesB;
+  statInvalidA.textContent = (invalidA + duplicatesA).toLocaleString();
+  statInvalidB.textContent = (invalidB + duplicatesB).toLocaleString();
+  statInvalidTotal.textContent = totalInvalid.toLocaleString();
 
   // Logic: Show Logs
   if (skippedLog.length > 0) {
-    addLog(`Skipped ${overlapCount} overlapping records.`, "warning");
+    addLog(`Found ${overlapCount} common emails (present in both).`, "warning");
     addLog(`--- SKIP DETAILS START ---`, "info");
 
     const MAX_LOG = 100;
@@ -234,14 +285,17 @@ function performExclusiveCompare() {
       );
     }
     addLog(`--- SKIP DETAILS END ---`, "info");
+  } else {
+    addLog(`No common overlap found between the validation sets.`, "success");
   }
 
+  // Final Summary
   if (finalData.length === 0) {
     addLog("Analysis Complete. No unique records found.", "warning");
   } else {
-    addLog(`Analysis Complete.`, "success");
-    addLog(`Unique to File A: ${uniqueACount}`, "success");
-    addLog(`Unique to File B: ${uniqueBCount}`, "success");
+    addLog(`Comparison Complete.`, "success");
+    addLog(`Unique records from A: ${uniqueACount}`, "success");
+    addLog(`Unique records from B: ${uniqueBCount}`, "success");
     prepareChunks(finalData);
   }
 }
