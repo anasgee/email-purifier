@@ -455,6 +455,11 @@ function downloadFullCSV(rows, filename) {
 }
 
 // Download: Chunked ZIP (4999 per file)
+function formatK(num) {
+  if (num >= 1000) return num / 1000 + "K";
+  return num.toString();
+}
+
 function downloadChunkedZip(rows, filename) {
   if (!rows || rows.length === 0) {
     alert("No data to download.");
@@ -466,9 +471,12 @@ function downloadChunkedZip(rows, filename) {
 
   for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
     const chunk = rows.slice(i, i + CHUNK_SIZE);
-    const batchNum = Math.floor(i / CHUNK_SIZE) + 1;
+    const batchIndex = Math.floor(i / CHUNK_SIZE);
+    const startLabel = batchIndex === 0 ? "1" : formatK(batchIndex * 5000);
+    const endLabel = formatK((batchIndex + 1) * 5000);
+    const chunkName = `SDP-${startLabel}-${endLabel} Data Import.csv`;
     const csv = Papa.unparse(chunk);
-    zip.file(`${filename}_batch_${batchNum}.csv`, csv);
+    zip.file(chunkName, csv);
   }
 
   zip.generateAsync({ type: "blob" }).then(function (content) {
