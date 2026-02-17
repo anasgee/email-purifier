@@ -155,82 +155,81 @@ function getEmail(row) {
 function performExclusiveCompare() {
   addLog("Analyzing dataset for overlaps...", "info");
 
-  const emailsA = new Map(); // Normalized Email -> Row
-  const emailsB = new Set(); // Set of Normalized Emails in B
-
-  // Load A
+  // sets for fast lookup of existence
+  const emailsA_Set = new Set();
   fileAData.forEach((row) => {
     const email = getEmail(row);
-    if (email) emailsA.set(email, row);
+    if (email) emailsA_Set.add(email);
   });
 
-  // Load B
+  const emailsB_Set = new Set();
   fileBData.forEach((row) => {
     const email = getEmail(row);
-    if (email) emailsB.add(email);
+    if (email) emailsB_Set.add(email);
   });
 
-  // Calculate Set Difference: (A - B) U (B - A) ?
-  // USER REQUEST: "return only those emails which are not present in those both file A and file B"
-  // Clarification: "only be available in either in list a or either in list b" -> XOR (Symmetric Difference)
-  // "it should not return those emails which are duplicate [overlap]"
-
-  // Logic:
-  // 1. Keep items in A if NOT in B
-  // 2. Keep items in B if NOT in A
-  // 3. Combine unique A and unique B
-
-  const uniqueRows = [];
   let overlapCount = 0;
+  const uniqueMap = new Map(); // Use Map to deduplicate final result by email
 
-  // 1. A - B
-  for (const [email, row] of emailsA) {
-    if (!emailsB.has(email)) {
-      uniqueRows.push(row);
-    } else {
-      overlapCount++;
+  // 1. Process File A
+  // Keep row IF email is NOT in B
+  fileAData.forEach((row) => {
+    const email = getEmail(row);
+    if (email) {
+      if (emailsB_Set.has(email)) {
+        overlapCount++; // It's common, so we toss it
+      } else {
+        // Unique to A
+        if (!uniqueMap.has(email)) {
+          uniqueMap.set(email, row);
+        }
+      }
     }
-  }
+  });
 
-  // 2. B - A
-  // We need map for B to get rows back? Or just re-iterate fileBData?
-  // Using fileBData is safer to get original row structure
-  // We need to re-scan file B, check if email is in A (emailsA map).
-  // Note: If B has internal duplicates, we handle them?
-  // User said "if emails are duplicate... ignore". So we assume unique output per email.
-
-  // To assume efficient check:
-  const emailsInUniqueSet = new Set(uniqueRows.map((r) => getEmail(r))); // Init with A-uniques
-
+  // 2. Process File B
+  // Keep row IF email is NOT in A
   fileBData.forEach((row) => {
     const email = getEmail(row);
     if (email) {
-      if (!emailsA.has(email)) {
-        // It is in B but NOT in A.
-        // Check if we already added it (internal B duplicate)
-        if (!emailsInUniqueSet.has(email)) {
-          uniqueRows.push(row);
-          emailsInUniqueSet.add(email);
+      if (emailsA_Set.has(email)) {
+        overlapCount++; // It's common, so we toss it
+      } else {
+        // Unique to B
+        // Check if we already have it (internal duplicates in B)
+        if (!uniqueMap.has(email)) {
+          uniqueMap.set(email, row);
         }
       }
-      // If emailsA has it, it's overlap (already counted in A loop)
     }
   });
+
+  const uniqueRows = Array.from(uniqueMap.values());
 
   statOverlap.textContent = overlapCount.toLocaleString();
   statUniqueResult.textContent = uniqueRows.length.toLocaleString();
 
-  if (uniqueRows.length === 0) {
-    addLog("No unique records found. Files are identical?", "error");
-    setStatus("error");
+  if (uniqueRows.length === 0 && overlapCount === 0) {
+    addLog("No valid data found in comparison.", "error");
     return;
   }
 
-  addLog(`Analysis Complete.`);
-  addLog(`Removed ${overlapCount} overlapping records.`, "warning");
-  addLog(`Identified ${uniqueRows.length} exclusive records.`, "success");
-
-  prepareChunks(uniqueRows);
+  if (uniqueRows.length === 0) {
+    addLog(
+      "Analysis Complete. Files are identical (all records overlap).",
+      "warning",
+    );
+    addLog(`Removed ${overlapCount} common records.`, "warning");
+    // Still allow download? No, empty.
+  } else {
+    addLog(`Analysis Complete.`);
+    addLog(`Removed ${overlapCount} common overlapping records.`, "warning");
+    addLog(
+      `Identified ${uniqueRows.length} exclusive unique emails.`,
+      "success",
+    );
+    prepareChunks(uniqueRows);
+  }
 }
 
 function prepareChunks(rows) {
