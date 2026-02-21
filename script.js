@@ -105,10 +105,6 @@ function setMode(mode) {
   }
 }
 
-startCompareBtn.addEventListener("click", () => {
-  if (fileA && fileB) startComparisonProcessing();
-});
-
 fileInput.addEventListener("change", (e) => {
   if (e.target.files.length > 0) {
     handleFileSelect(Array.from(e.target.files));

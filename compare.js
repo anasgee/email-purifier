@@ -27,6 +27,8 @@ const dlBFull = document.getElementById("dl-b-full");
 const dlBZip = document.getElementById("dl-b-zip");
 const dlAllFull = document.getElementById("dl-all-full");
 const dlAllZip = document.getElementById("dl-all-zip");
+const dlInvalidBtn = document.getElementById("dl-invalid-btn");
+const invalidDownloadsContainer = document.getElementById("invalid-downloads");
 
 // DOM Elements for Stats
 const statTotalA = document.getElementById("stat-total-a");
@@ -47,6 +49,7 @@ let fileBData = [];
 let uniqueARows = [];
 let uniqueBRows = [];
 let splitChunks = [];
+let invalidRowsCombined = [];
 
 // Event Listeners
 btnSelectA.addEventListener("click", () => fileInputA.click());
@@ -183,6 +186,12 @@ dlAllZip.addEventListener("click", () =>
   ),
 );
 
+if (dlInvalidBtn) {
+  dlInvalidBtn.addEventListener("click", () => {
+    downloadFullCSV(invalidRowsCombined, "invalid_records_combined");
+  });
+}
+
 // Logic
 async function startComparison() {
   // Check if data is loaded
@@ -241,6 +250,7 @@ function performExclusiveCompare() {
   addLog("Analysis Started...", "info");
 
   // --- Pre-Process File A ---
+  invalidRowsCombined = [];
   const emailsA_Map = new Map(); // Email -> Row
   let invalidA = 0;
   let duplicatesA = 0;
@@ -249,9 +259,15 @@ function performExclusiveCompare() {
     const email = getEmail(row);
     if (!email) {
       invalidA++;
+      row.Status = "Invalid/Missing Email";
+      row.Source = "File A";
+      invalidRowsCombined.push(row);
     } else {
       if (emailsA_Map.has(email)) {
         duplicatesA++;
+        row.Status = "Duplicate";
+        row.Source = "File A";
+        invalidRowsCombined.push(row);
       } else {
         emailsA_Map.set(email, row);
       }
@@ -280,9 +296,15 @@ function performExclusiveCompare() {
     const email = getEmail(row);
     if (!email) {
       invalidB++;
+      row.Status = "Invalid/Missing Email";
+      row.Source = "File B";
+      invalidRowsCombined.push(row);
     } else {
       if (emailsB_Map.has(email)) {
         duplicatesB++;
+        row.Status = "Duplicate";
+        row.Source = "File B";
+        invalidRowsCombined.push(row);
       } else {
         emailsB_Map.set(email, row);
       }
@@ -349,6 +371,16 @@ function performExclusiveCompare() {
   statInvalidA.textContent = (invalidA + duplicatesA).toLocaleString();
   statInvalidB.textContent = (invalidB + duplicatesB).toLocaleString();
   statInvalidTotal.textContent = totalInvalid.toLocaleString();
+
+  if (invalidDownloadsContainer) {
+    if (invalidRowsCombined.length > 0) {
+      invalidDownloadsContainer.classList.remove("hidden");
+      invalidDownloadsContainer.style.display = "block";
+    } else {
+      invalidDownloadsContainer.classList.add("hidden");
+      invalidDownloadsContainer.style.display = "none";
+    }
+  }
 
   // Logic: Show Logs
   if (skippedLog.length > 0) {
