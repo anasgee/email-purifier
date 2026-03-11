@@ -507,6 +507,10 @@ function downloadChunkedZip(rows, defaultFilename) {
   if (!filename) return; // user cancelled
   if (!filename.endsWith(".zip")) filename += ".zip";
 
+  let baseChunkName = prompt("Enter base name for the chunked CSV files inside the ZIP:", filename.replace(/\.zip$/i, ''));
+  if (baseChunkName === null) return;
+  if (baseChunkName === "") baseChunkName = "batch";
+
   const CHUNK_SIZE = 4999;
   const zip = new JSZip();
 
@@ -515,7 +519,7 @@ function downloadChunkedZip(rows, defaultFilename) {
     const batchIndex = Math.floor(i / CHUNK_SIZE);
     const startLabel = batchIndex === 0 ? "1" : formatK(batchIndex * 5000);
     const endLabel = formatK((batchIndex + 1) * 5000);
-    const chunkName = `SDP ${startLabel}-${endLabel} Batch Import.csv`;
+    const chunkName = `${baseChunkName}_${startLabel}-${endLabel}.csv`;
     const csv = Papa.unparse(chunk);
     zip.file(chunkName, csv);
   }

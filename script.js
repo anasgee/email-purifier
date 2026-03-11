@@ -552,15 +552,19 @@ function downloadSplitZip() {
   if (!filename) return; // user cancelled
   if (!filename.endsWith(".zip")) filename += ".zip";
 
+  let baseChunkName = prompt("Enter base name for the chunked CSV files inside the ZIP:", filename.replace(/\.zip$/i, ''));
+  if (baseChunkName === null) return;
+  if (baseChunkName === "") baseChunkName = "batch";
+
   const zip = new JSZip();
 
   // Add each chunk
   splitChunks.forEach((chunk, index) => {
     const csv = Papa.unparse(chunk);
-    // Naming: batch_1_4999.csv, batch_2_...
+    // Naming: baseName_1_(1-4999).csv, baseName_2_...
     const start = index * 4999 + 1;
     const end = start + chunk.length - 1;
-    zip.file(`batch_${index + 1}_(${start}-${end}).csv`, csv);
+    zip.file(`${baseChunkName}_${index + 1}_(${start}-${end}).csv`, csv);
   });
 
   zip.generateAsync({ type: "blob" }).then(function (content) {
