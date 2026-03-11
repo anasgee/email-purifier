@@ -37,6 +37,7 @@ let processedFilesData = []; // Array of { name: "filename", data: [rows] }
 let globalSeenEmails = new Set();
 let currentMode = "standard"; // 'standard' | 'splitter'
 let splitChunks = []; // Store chunks for splitter mode
+let singleDownloadFileData = null;
 let stats = {
   total: 0,
   valid: 0,
@@ -139,6 +140,27 @@ dropZone.addEventListener("drop", (e) => {
 
 resetBtn.addEventListener("click", resetSystem);
 
+downloadLink.addEventListener("click", (e) => {
+  e.preventDefault();
+  if (!singleDownloadFileData) return;
+  
+  let filename = prompt("Enter file name for the CSV:", `cleaned_${singleDownloadFileData.name}`);
+  if (!filename) return;
+  if (!filename.endsWith(".csv")) filename += ".csv";
+  
+  const csv = Papa.unparse(singleDownloadFileData.rows);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
 downloadMergedBtn.addEventListener("click", (e) => {
   e.preventDefault();
   downloadMergedCSV();
@@ -175,6 +197,7 @@ async function startProcessing(files) {
   // Reset State
   processedFilesData = [];
   splitChunks = [];
+  singleDownloadFileData = null;
   globalSeenEmails.clear();
   stats = {
     total: 0,
@@ -525,6 +548,10 @@ function prepareSplitBatches() {
 function downloadSplitZip() {
   if (splitChunks.length === 0) return;
 
+  let filename = prompt("Enter file name for the ZIP archive:", "split_batches_archive.zip");
+  if (!filename) return; // user cancelled
+  if (!filename.endsWith(".zip")) filename += ".zip";
+
   const zip = new JSZip();
 
   // Add each chunk
@@ -540,7 +567,7 @@ function downloadSplitZip() {
     const url = URL.createObjectURL(content);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "split_batches_archive.zip";
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -553,16 +580,16 @@ function downloadSplitZip() {
 // --- Download Helpers ---
 
 function prepareSingleDownload(fileData) {
-  const csv = Papa.unparse(fileData.rows);
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-
-  downloadLink.href = url;
-  downloadLink.download = `cleaned_${fileData.name}`;
+  singleDownloadFileData = fileData;
+  downloadLink.href = "#"; // Just to feel active but handled via JS
 }
 
 function downloadMergedCSV() {
   if (processedFilesData.length === 0) return;
+
+  let filename = prompt("Enter file name for the merged CSV:", "merged_purified_data.csv");
+  if (!filename) return; // user cancelled
+  if (!filename.endsWith(".csv")) filename += ".csv";
 
   const blobParts = [];
 
@@ -598,7 +625,7 @@ function downloadMergedCSV() {
   // Create temp link to click
   const a = document.createElement("a");
   a.href = url;
-  a.download = `merged_purified_data.csv`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -608,6 +635,10 @@ function downloadMergedCSV() {
 }
 
 function downloadZIP() {
+  let filename = prompt("Enter file name for the ZIP archive:", "cleaned_data_archive.zip");
+  if (!filename) return; // user cancelled
+  if (!filename.endsWith(".zip")) filename += ".zip";
+
   const zip = new JSZip();
 
   processedFilesData.forEach((f) => {
@@ -621,7 +652,7 @@ function downloadZIP() {
     const url = URL.createObjectURL(content);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "cleaned_data_archive.zip";
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -630,6 +661,10 @@ function downloadZIP() {
 
 function downloadInvalidCSV() {
   if (processedFilesData.length === 0) return;
+
+  let filename = prompt("Enter file name for the invalid records CSV:", "invalid_rejected_data.csv");
+  if (!filename) return; // user cancelled
+  if (!filename.endsWith(".csv")) filename += ".csv";
 
   const blobParts = [];
   const headers = ["Name", "OriginalEmail", "Phone", "Status"];
@@ -651,7 +686,7 @@ function downloadInvalidCSV() {
 
   const a = document.createElement("a");
   a.href = url;
-  a.download = `invalid_rejected_data.csv`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -787,6 +822,7 @@ function resetSystem() {
   processedFilesData = [];
   fileInput.value = "";
   splitChunks = [];
+  singleDownloadFileData = null;
 
   // UI Reset
   uploadView.classList.remove("hidden");

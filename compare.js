@@ -469,17 +469,22 @@ function prepareChunks(rows) {
 }
 
 // Download: Full CSV (single file)
-function downloadFullCSV(rows, filename) {
+function downloadFullCSV(rows, defaultFilename) {
   if (!rows || rows.length === 0) {
     alert("No data to download.");
     return;
   }
+
+  let filename = prompt("Enter file name for the CSV:", defaultFilename + ".csv");
+  if (!filename) return; // user cancelled
+  if (!filename.endsWith(".csv")) filename += ".csv";
+
   const csv = Papa.unparse(rows);
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${filename}.csv`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -492,11 +497,15 @@ function formatK(num) {
   return num.toString();
 }
 
-function downloadChunkedZip(rows, filename) {
+function downloadChunkedZip(rows, defaultFilename) {
   if (!rows || rows.length === 0) {
     alert("No data to download.");
     return;
   }
+
+  let filename = prompt("Enter file name for the ZIP archive:", defaultFilename + ".zip");
+  if (!filename) return; // user cancelled
+  if (!filename.endsWith(".zip")) filename += ".zip";
 
   const CHUNK_SIZE = 4999;
   const zip = new JSZip();
@@ -515,7 +524,7 @@ function downloadChunkedZip(rows, filename) {
     const url = URL.createObjectURL(content);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${filename}.zip`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
