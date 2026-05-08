@@ -1,7 +1,7 @@
 (function () {
   const EXPORT_COLUMNS = ["First Name", "Last Name", "Email"];
   const DEFAULT_FIRST_NAME = "Dear Applicant";
-  const DEFAULT_LAST_NAME = "";
+  const DEFAULT_LAST_NAME = "Applicant";
   const DEFAULT_CHUNK_SIZE = 4999;
 
   const DOMAIN_CORRECTIONS = {
