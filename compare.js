@@ -98,6 +98,7 @@ async function handleSelect(file, side) {
   try {
     // Immediate Parse
     const data = await parseFile(file);
+    const columns = EmailExportUtils.detectColumns(Object.keys(data[0] || {}));
 
     // Quick Pre-analysis
     let valid = 0;
@@ -106,14 +107,14 @@ async function handleSelect(file, side) {
     let dups = 0;
 
     data.forEach((row) => {
-      const email = getEmail(row);
-      if (!email) {
+      const contact = EmailExportUtils.buildContact(row, columns);
+      if (!contact.valid) {
         invalid++;
       } else {
-        if (seen.has(email)) {
+        if (seen.has(contact.normalizedEmail)) {
           dups++;
         } else {
-          seen.add(email);
+          seen.add(contact.normalizedEmail);
           valid++;
         }
       }
@@ -188,7 +189,7 @@ dlAllZip.addEventListener("click", () =>
 
 if (dlInvalidBtn) {
   dlInvalidBtn.addEventListener("click", () => {
-    downloadFullCSV(invalidRowsCombined, "invalid_records_combined");
+    downloadInvalidCSV(invalidRowsCombined, "invalid_records_combined");
   });
 }
 
@@ -233,43 +234,41 @@ function parseFile(file) {
   });
 }
 
-function getEmail(row) {
-  if (!row) return null;
-  // Simple heuristic to find email column if not standard
-  const keys = Object.keys(row);
-  const emailKey = keys.find(
-    (k) =>
-      k.toLowerCase().includes("email") || k.toLowerCase().includes("e-mail"),
-  );
-  if (emailKey && row[emailKey])
-    return row[emailKey].toString().toLowerCase().trim();
-  return null;
-}
-
 function performExclusiveCompare() {
   addLog("Analysis Started...", "info");
 
   // --- Pre-Process File A ---
   invalidRowsCombined = [];
   const emailsA_Map = new Map(); // Email -> Row
+  const columnsA = EmailExportUtils.detectColumns(Object.keys(fileAData[0] || {}));
   let invalidA = 0;
   let duplicatesA = 0;
 
   fileAData.forEach((row) => {
-    const email = getEmail(row);
-    if (!email) {
+    const contact = EmailExportUtils.buildContact(row, columnsA);
+    if (!contact.valid) {
       invalidA++;
-      row.Status = "Invalid/Missing Email";
-      row.Source = "File A";
-      invalidRowsCombined.push(row);
+      invalidRowsCombined.push(
+        EmailExportUtils.buildInvalidExportRow(
+          row,
+          columnsA,
+          contact.status,
+          "File A",
+        ),
+      );
     } else {
-      if (emailsA_Map.has(email)) {
+      if (emailsA_Map.has(contact.normalizedEmail)) {
         duplicatesA++;
-        row.Status = "Duplicate";
-        row.Source = "File A";
-        invalidRowsCombined.push(row);
+        invalidRowsCombined.push(
+          EmailExportUtils.buildInvalidExportRow(
+            row,
+            columnsA,
+            "Duplicate",
+            "File A",
+          ),
+        );
       } else {
-        emailsA_Map.set(email, row);
+        emailsA_Map.set(contact.normalizedEmail, contact.row);
       }
     }
   });
@@ -289,24 +288,35 @@ function performExclusiveCompare() {
 
   // --- Pre-Process File B ---
   const emailsB_Map = new Map(); // Email -> Row
+  const columnsB = EmailExportUtils.detectColumns(Object.keys(fileBData[0] || {}));
   let invalidB = 0;
   let duplicatesB = 0;
 
   fileBData.forEach((row) => {
-    const email = getEmail(row);
-    if (!email) {
+    const contact = EmailExportUtils.buildContact(row, columnsB);
+    if (!contact.valid) {
       invalidB++;
-      row.Status = "Invalid/Missing Email";
-      row.Source = "File B";
-      invalidRowsCombined.push(row);
+      invalidRowsCombined.push(
+        EmailExportUtils.buildInvalidExportRow(
+          row,
+          columnsB,
+          contact.status,
+          "File B",
+        ),
+      );
     } else {
-      if (emailsB_Map.has(email)) {
+      if (emailsB_Map.has(contact.normalizedEmail)) {
         duplicatesB++;
-        row.Status = "Duplicate";
-        row.Source = "File B";
-        invalidRowsCombined.push(row);
+        invalidRowsCombined.push(
+          EmailExportUtils.buildInvalidExportRow(
+            row,
+            columnsB,
+            "Duplicate",
+            "File B",
+          ),
+        );
       } else {
-        emailsB_Map.set(email, row);
+        emailsB_Map.set(contact.normalizedEmail, contact.row);
       }
     }
   });
@@ -342,7 +352,7 @@ function performExclusiveCompare() {
       skippedLog.push({ email, reason: "Common in B", source: "File A" });
     } else {
       uniqueACount++;
-      uniqueAMap.set(email, transformRow(row, email));
+      uniqueAMap.set(email, row);
     }
   });
 
@@ -352,7 +362,7 @@ function performExclusiveCompare() {
       // Already counted overlap in A loop.
     } else {
       uniqueBCount++;
-      uniqueBMap.set(email, transformRow(row, email));
+      uniqueBMap.set(email, row);
     }
   });
 
@@ -417,47 +427,6 @@ function performExclusiveCompare() {
   }
 }
 
-function transformRow(row, email) {
-  let firstName = "Applicant";
-  let lastName = "Applicant";
-
-  // Try to find Name column
-  const keys = Object.keys(row);
-
-  // Check for explicit First/Last
-  const keyFirst = keys.find(
-    (k) => k.toLowerCase().replace(/[^a-z]/g, "") === "firstname",
-  );
-  const keyLast = keys.find(
-    (k) => k.toLowerCase().replace(/[^a-z]/g, "") === "lastname",
-  );
-
-  if (keyFirst && row[keyFirst]) firstName = row[keyFirst];
-  if (keyLast && row[keyLast]) lastName = row[keyLast];
-
-  // If still defaults, check "Name" or "Full Name"
-  if (firstName === "Applicant" && lastName === "Applicant") {
-    const keyName = keys.find((k) =>
-      ["name", "fullname", "full name"].includes(k.toLowerCase().trim()),
-    );
-    if (keyName && row[keyName]) {
-      const parts = row[keyName].trim().split(/\s+/);
-      if (parts.length > 0) {
-        firstName = parts[0];
-        if (parts.length > 1) {
-          lastName = parts.slice(1).join(" ");
-        }
-      }
-    }
-  }
-
-  return {
-    "First Name": firstName,
-    "Last Name": lastName,
-    Email: email,
-  };
-}
-
 function prepareChunks(rows) {
   addLog(`Total unique records: ${rows.length}`);
   addLog(`Unique A: ${uniqueARows.length} | Unique B: ${uniqueBRows.length}`);
@@ -470,70 +439,67 @@ function prepareChunks(rows) {
 
 // Download: Full CSV (single file)
 function downloadFullCSV(rows, defaultFilename) {
-  if (!rows || rows.length === 0) {
+  const exportRows = EmailExportUtils.prepareExportRows(rows);
+  if (!exportRows || exportRows.length === 0) {
     alert("No data to download.");
     return;
   }
 
   let filename = prompt("Enter file name for the CSV:", defaultFilename + ".csv");
   if (!filename) return; // user cancelled
-  if (!filename.endsWith(".csv")) filename += ".csv";
+  filename = EmailExportUtils.ensureExtension(filename, ".csv");
 
-  const csv = Papa.unparse(rows);
+  const csv = EmailExportUtils.unparseExportRows(exportRows);
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  EmailExportUtils.downloadBlob(blob, filename);
 }
 
-// Download: Chunked ZIP (4999 per file)
-function formatK(num) {
-  if (num >= 1000) return num / 1000 + "k";
-  return num.toString();
-}
-
+// Download: Chunked ZIP
 function downloadChunkedZip(rows, defaultFilename) {
-  if (!rows || rows.length === 0) {
+  const exportRows = EmailExportUtils.prepareExportRows(rows);
+  if (!exportRows || exportRows.length === 0) {
     alert("No data to download.");
     return;
   }
 
-  let filename = prompt("Enter file name for the ZIP archive:", defaultFilename + ".zip");
-  if (!filename) return; // user cancelled
-  if (!filename.endsWith(".zip")) filename += ".zip";
+  const options = EmailExportUtils.promptChunkExportOptions(
+    defaultFilename + ".zip",
+    defaultFilename,
+  );
+  if (!options) return;
 
-  let baseChunkName = prompt("Enter base name for the chunked CSV files inside the ZIP:", filename.replace(/\.zip$/i, ''));
-  if (baseChunkName === null) return;
-  if (baseChunkName === "") baseChunkName = "batch";
-
-  const CHUNK_SIZE = 4999;
   const zip = new JSZip();
+  const chunks = EmailExportUtils.chunkRows(exportRows, options.chunkSize);
 
-  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
-    const chunk = rows.slice(i, i + CHUNK_SIZE);
-    const batchIndex = Math.floor(i / CHUNK_SIZE);
-    const startLabel = batchIndex === 0 ? "1" : formatK(batchIndex * 5000);
-    const endLabel = formatK((batchIndex + 1) * 5000);
-    const chunkName = `${baseChunkName}_${startLabel}-${endLabel}.csv`;
-    const csv = Papa.unparse(chunk);
-    zip.file(chunkName, csv);
-  }
+  chunks.forEach((chunk, index) => {
+    const csv = EmailExportUtils.unparseExportRows(chunk);
+    zip.file(EmailExportUtils.makeChunkFilename(options, index, chunk.length), csv);
+  });
 
   zip.generateAsync({ type: "blob" }).then(function (content) {
-    const url = URL.createObjectURL(content);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    EmailExportUtils.downloadBlob(content, options.zipFilename);
   });
+}
+
+function downloadInvalidCSV(rows, defaultFilename) {
+  if (!rows || rows.length === 0) {
+    alert("No invalid records to download.");
+    return;
+  }
+
+  let filename = prompt(
+    "Enter file name for the invalid records CSV:",
+    defaultFilename + ".csv",
+  );
+  if (!filename) return;
+  filename = EmailExportUtils.ensureExtension(filename, ".csv");
+
+  const csv = EmailExportUtils.unparseRowsWithFields(
+    rows,
+    EmailExportUtils.INVALID_EXPORT_COLUMNS,
+  );
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  EmailExportUtils.downloadBlob(blob, filename);
 }
 
 // UI Helpers

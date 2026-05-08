@@ -37,6 +37,7 @@ let processedFilesData = []; // Array of { name: "filename", data: [rows] }
 let globalSeenEmails = new Set();
 let currentMode = "standard"; // 'standard' | 'splitter'
 let splitChunks = []; // Store chunks for splitter mode
+let splitExportRows = []; // Store validated rows before export-time chunk options
 let singleDownloadFileData = null;
 let stats = {
   total: 0,
@@ -146,19 +147,17 @@ downloadLink.addEventListener("click", (e) => {
   
   let filename = prompt("Enter file name for the CSV:", `cleaned_${singleDownloadFileData.name}`);
   if (!filename) return;
-  if (!filename.endsWith(".csv")) filename += ".csv";
-  
-  const csv = Papa.unparse(singleDownloadFileData.rows);
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
+  filename = EmailExportUtils.ensureExtension(filename, ".csv");
 
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const rows = EmailExportUtils.prepareExportRows(singleDownloadFileData.rows);
+  if (rows.length === 0) {
+    alert("No validated email rows to download.");
+    return;
+  }
+
+  const csv = EmailExportUtils.unparseExportRows(rows);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  EmailExportUtils.downloadBlob(blob, filename);
 });
 
 downloadMergedBtn.addEventListener("click", (e) => {
@@ -197,6 +196,7 @@ async function startProcessing(files) {
   // Reset State
   processedFilesData = [];
   splitChunks = [];
+  splitExportRows = [];
   singleDownloadFileData = null;
   globalSeenEmails.clear();
   stats = {
@@ -251,69 +251,6 @@ function processSingleFile(file) {
   });
 }
 
-// Domain Correction Map
-const DOMAIN_CORRECTIONS = {
-  "gmail.com": [
-    "gamil.com",
-    "gmali.com",
-    "gmaill.com",
-    "gmai.com",
-    "gmil.com",
-    "gmal.com",
-    "gamail.com",
-    "gmail.co",
-    "gmail.cm",
-    "gmail.om",
-    "gma.com",
-    "gm.com",
-    "gml.com",
-    "ymail.com",
-  ],
-  "yahoo.com": [
-    "yaho.com",
-    "yahooo.com",
-    "yhooo.com",
-    "yaho.co",
-    "yahoo.co",
-    "yhoo.com",
-    "yahho.com",
-  ],
-  "hotmail.com": [
-    "hotmal.com",
-    "hotmai.com",
-    "hotmil.com",
-    "hotail.com",
-    "homtail.com",
-    "hotmaill.com",
-    "hotmaik.com",
-  ],
-  "outlook.com": [
-    "outlok.com",
-    "otlook.com",
-    "outlook.co",
-    "outook.com",
-    "outllook.com",
-  ],
-  "icloud.com": ["icoud.com", "iclud.com", "iclou.com", "icloud.co"],
-};
-
-function autoCorrectEmail(email) {
-  if (!email || !email.includes("@")) return email;
-  const parts = email.split("@");
-  if (parts.length !== 2) return email;
-  const localPart = parts[0];
-  let domain = parts[1].toLowerCase();
-
-  // Correction
-  for (const [correctDomain, typos] of Object.entries(DOMAIN_CORRECTIONS)) {
-    if (typos.includes(domain)) {
-      domain = correctDomain;
-      break;
-    }
-  }
-  return `${localPart}@${domain}`;
-}
-
 function analyzeFileContent(fileName, data, fields) {
   if (!data || data.length === 0) {
     addLog(`Skipping ${fileName}: Empty file.`, "error");
@@ -324,80 +261,42 @@ function analyzeFileContent(fileName, data, fields) {
   updateStatsUI();
 
   const headers = fields || Object.keys(data[0]);
-  const { emailCol, phoneCol, nameCol } = detectColumns(headers);
-
-  if (!emailCol) {
-    addLog(`Skipping ${fileName}: No Email column found.`, "error");
-    // We count all as invalid/filtered if we can't process
-    stats.invalid += data.length;
-    updateStatsUI();
-    return;
-  }
+  const columns = EmailExportUtils.detectColumns(headers);
 
   const fileValidRows = [];
   const fileInvalidRows = [];
 
   data.forEach((row) => {
-    const emailRaw = row[emailCol];
-    let email = emailRaw ? emailRaw.toString().trim() : "";
+    const contact = EmailExportUtils.buildContact(row, columns);
 
-    // Safety check for other columns
-    const name = nameCol && row[nameCol] ? row[nameCol].toString().trim() : "";
-    const phone =
-      phoneCol && row[phoneCol] ? row[phoneCol].toString().trim() : "";
-
-    // Common helper to push invalid
-    const markInvalid = (status) => {
-      fileInvalidRows.push({
-        Name: name,
-        OriginalEmail: emailRaw,
-        Phone: phone,
-        Status: status,
-      });
+    if (!contact.valid) {
+      fileInvalidRows.push(
+        EmailExportUtils.buildInvalidExportRow(
+          row,
+          columns,
+          contact.status,
+          fileName,
+        ),
+      );
       stats.invalid++;
-    };
-
-    if (!email) {
-      markInvalid("Missing Email");
       return;
     }
 
-    // 1. Auto-correct Typos
-    const originalEmail = email;
-    email = autoCorrectEmail(email);
-    if (email !== originalEmail) {
+    if (contact.corrected) {
       stats.corrected++;
     }
 
-    // 2. Validate Format
-    if (!isValidEmail(email)) {
-      markInvalid("Invalid Format");
-      return;
-    }
-
-    // 2. Check Duplicates (Global)
-    const normalizedEmail = email.toLowerCase();
+    // Check Duplicates (Global)
+    const normalizedEmail = contact.normalizedEmail;
     if (globalSeenEmails.has(normalizedEmail)) {
       stats.duplicates++;
-      // Optional: Do we want to save duplicates to invalid list? Usually yes.
-      // But 'duplicates' is a separate stat.
-      // Let's add them to invalid list with status 'Duplicate' so user can see them?
-      // User asked for "email that not shows correct". Duplicates are usually 'correct format' but 'redundant'.
-      // I'll skip duplicates for now unless user asks, to keep "Invalid" focused on errors.
     } else {
       // Valid & New
       globalSeenEmails.add(normalizedEmail);
       stats.valid++;
       stats.unique = globalSeenEmails.size; // Update unique count
 
-      // Clean phone
-      const cleanPhone = phone ? phone.replace(/[^0-9+]/g, "") : "";
-
-      fileValidRows.push({
-        Name: name,
-        Email: email, // Keep original casing or normalized? Usually original is preferred for display, but normalized for uniqueness.
-        Phone: cleanPhone,
-      });
+      fileValidRows.push(contact.row);
     }
   });
 
@@ -482,7 +381,7 @@ function finishProcessing() {
     const readyText = document.querySelector("#download-ready p");
     readyTitle.textContent =
       currentMode === "compare" ? "Comparison Result Ready" : "Batches Ready";
-    readyText.textContent = `Data split into ${splitChunks.length} files (Max 4999 records each).`;
+    readyText.textContent = `Default split preview: ${splitChunks.length} files. You can change rows per chunk and numbering when exporting.`;
   } else {
     // --- STANDARD MODE ---
     // Determine button visibility
@@ -530,10 +429,11 @@ function prepareSplitBatches() {
     });
   });
 
-  const allRows = Array.from(uniqueMap.values());
+  const allRows = EmailExportUtils.prepareExportRows(Array.from(uniqueMap.values()));
+  splitExportRows = allRows;
 
   // 2. Split into chunks of 4999
-  const CHUNK_SIZE = 4999;
+  const CHUNK_SIZE = EmailExportUtils.DEFAULT_CHUNK_SIZE;
   splitChunks = [];
   for (let i = 0; i < allRows.length; i += CHUNK_SIZE) {
     splitChunks.push(allRows.slice(i, i + CHUNK_SIZE));
@@ -546,38 +446,28 @@ function prepareSplitBatches() {
 }
 
 function downloadSplitZip() {
-  if (splitChunks.length === 0) return;
+  const rows = EmailExportUtils.prepareExportRows(splitExportRows);
+  if (rows.length === 0) {
+    alert("No validated email rows to download.");
+    return;
+  }
 
-  let filename = prompt("Enter file name for the ZIP archive:", "split_batches_archive.zip");
-  if (!filename) return; // user cancelled
-  if (!filename.endsWith(".zip")) filename += ".zip";
-
-  let baseChunkName = prompt("Enter base name for the chunked CSV files inside the ZIP:", filename.replace(/\.zip$/i, ''));
-  if (baseChunkName === null) return;
-  if (baseChunkName === "") baseChunkName = "batch";
+  const options = EmailExportUtils.promptChunkExportOptions(
+    "split_batches_archive.zip",
+    "batch",
+  );
+  if (!options) return;
 
   const zip = new JSZip();
+  const chunks = EmailExportUtils.chunkRows(rows, options.chunkSize);
 
-  // Add each chunk
-  splitChunks.forEach((chunk, index) => {
-    const csv = Papa.unparse(chunk);
-    // Naming: baseName_1_(1-4999).csv, baseName_2_...
-    const start = index * 4999 + 1;
-    const end = start + chunk.length - 1;
-    zip.file(`${baseChunkName}_${index + 1}_(${start}-${end}).csv`, csv);
+  chunks.forEach((chunk, index) => {
+    const csv = EmailExportUtils.unparseExportRows(chunk);
+    zip.file(EmailExportUtils.makeChunkFilename(options, index, chunk.length), csv);
   });
 
   zip.generateAsync({ type: "blob" }).then(function (content) {
-    const url = URL.createObjectURL(content);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-
-    // Clean up
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    EmailExportUtils.downloadBlob(content, options.zipFilename);
   });
 }
 
@@ -593,73 +483,38 @@ function downloadMergedCSV() {
 
   let filename = prompt("Enter file name for the merged CSV:", "merged_purified_data.csv");
   if (!filename) return; // user cancelled
-  if (!filename.endsWith(".csv")) filename += ".csv";
+  filename = EmailExportUtils.ensureExtension(filename, ".csv");
 
-  const blobParts = [];
+  const rows = EmailExportUtils.prepareExportRows(
+    processedFilesData.flatMap((fileData) => fileData.rows || []),
+  );
+  if (rows.length === 0) {
+    alert("No validated email rows to download.");
+    return;
+  }
 
-  // Standard headers based on our analysis logic
-  const headers = ["Name", "Email", "Phone"];
-
-  // Add Header (We assume standard simple headers, so direct join is safe)
-  blobParts.push(headers.join(",") + "\n");
-
-  // Options for unparsing chunks without headers
-  const unparseConfig = {
-    header: false,
-    skipEmptyLines: true,
-  };
-
-  processedFilesData.forEach((f, index) => {
-    if (!f.rows || f.rows.length === 0) return;
-
-    // Unparse this file's rows
-    const chunkCsv = Papa.unparse(f.rows, unparseConfig);
-
-    if (chunkCsv && chunkCsv.length > 0) {
-      blobParts.push(chunkCsv);
-      // Add newline if it's not the very last chunk (or to be safe always add,
-      // but need to avoid extra empty lines. CSV allows trailing newline).
-      blobParts.push("\n");
-    }
-  });
-
-  const blob = new Blob(blobParts, { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-
-  // Create temp link to click
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-
-  // Clean up
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const csv = EmailExportUtils.unparseExportRows(rows);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  EmailExportUtils.downloadBlob(blob, filename);
 }
 
 function downloadZIP() {
   let filename = prompt("Enter file name for the ZIP archive:", "cleaned_data_archive.zip");
   if (!filename) return; // user cancelled
-  if (!filename.endsWith(".zip")) filename += ".zip";
+  filename = EmailExportUtils.ensureExtension(filename, ".zip");
 
   const zip = new JSZip();
 
   processedFilesData.forEach((f) => {
-    if (f.rows.length > 0) {
-      const csv = Papa.unparse(f.rows);
+    const rows = EmailExportUtils.prepareExportRows(f.rows);
+    if (rows.length > 0) {
+      const csv = EmailExportUtils.unparseExportRows(rows);
       zip.file(`cleaned_${f.name}`, csv);
     }
   });
 
   zip.generateAsync({ type: "blob" }).then(function (content) {
-    const url = URL.createObjectURL(content);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    EmailExportUtils.downloadBlob(content, filename);
   });
 }
 
@@ -668,110 +523,15 @@ function downloadInvalidCSV() {
 
   let filename = prompt("Enter file name for the invalid records CSV:", "invalid_rejected_data.csv");
   if (!filename) return; // user cancelled
-  if (!filename.endsWith(".csv")) filename += ".csv";
+  filename = EmailExportUtils.ensureExtension(filename, ".csv");
 
-  const blobParts = [];
-  const headers = ["Name", "OriginalEmail", "Phone", "Status"];
-  blobParts.push(headers.join(",") + "\n");
-
-  const unparseConfig = { header: false, skipEmptyLines: true };
-
-  processedFilesData.forEach((f) => {
-    if (!f.invalidRows || f.invalidRows.length === 0) return;
-    const chunkCsv = Papa.unparse(f.invalidRows, unparseConfig);
-    if (chunkCsv && chunkCsv.length > 0) {
-      blobParts.push(chunkCsv);
-      blobParts.push("\n");
-    }
-  });
-
-  const blob = new Blob(blobParts, { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-// --- Utilities ---
-
-function detectColumns(headers) {
-  const lowerHeaders = headers.map((h) => h.toLowerCase());
-
-  let emailCol =
-    headers[
-      lowerHeaders.findIndex(
-        (h) =>
-          h.includes("email") || h.includes("e-mail") || h.includes("mail"),
-      )
-    ];
-  let phoneCol =
-    headers[
-      lowerHeaders.findIndex(
-        (h) =>
-          h.includes("phone") ||
-          h.includes("mobile") ||
-          h.includes("cell") ||
-          h.includes("tel"),
-      )
-    ];
-  let nameCol =
-    headers[
-      lowerHeaders.findIndex(
-        (h) => h.includes("name") || h.includes("first") || h.includes("full"),
-      )
-    ];
-
-  return { emailCol, phoneCol, nameCol };
-}
-
-function isValidEmail(email) {
-  // 1. Basic Syntax Check (RFC 5322 compliant-ish)
-  // Ensures: no spaces, @ symbol present, dot in domain, TLD length >= 2
-  const emailRegex =
-    /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
-
-  if (!emailRegex.test(email)) return false;
-
-  const parts = email.split("@");
-  if (parts.length !== 2) return false;
-
-  const domain = parts[1].toLowerCase();
-  const localPart = parts[0];
-
-  // 2. Local Part Validation
-  if (localPart.length > 64) return false; // RFC standard
-  if (domain.length > 255) return false; // RFC standard
-  if (localPart.startsWith(".") || localPart.endsWith(".")) return false;
-  if (localPart.includes("..")) return false; // No consecutive dots
-
-  // 3. Domain Validation
-  if (domain.startsWith(".") || domain.endsWith(".")) return false;
-  if (domain.includes("..")) return false;
-
-  // 4. Typos check removed (handled by autoCorrectEmail)
-
-  // 5. Catch-all for very short TLDs (e.g. .c, .m) - already covered by regex {2,}
-  // 6. Specific 'gmail' pattern check (optional but requested "missspelled")
-  // If it contains "gmail" but isn't "gmail.com" and isn't a valid subdomain like "mail.gmail.com"
-  if (
-    domain.includes("gmail") &&
-    domain !== "gmail.com" &&
-    !domain.endsWith(".gmail.com")
-  ) {
-    // Check Levenshtein distance or simple heuristics?
-    // For now, if it looks like gmail but assumes it's a typo of the main domain
-    // Example: mygmail.com is valid? Yes.
-    // gmail.net? Valid (technically).
-    // so we rely on the specific list above for safety.
-  }
-
-  return true;
+  const rows = processedFilesData.flatMap((f) => f.invalidRows || []);
+  const csv = EmailExportUtils.unparseRowsWithFields(
+    rows,
+    EmailExportUtils.INVALID_EXPORT_COLUMNS,
+  );
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  EmailExportUtils.downloadBlob(blob, filename);
 }
 
 // UI Helpers
@@ -826,6 +586,7 @@ function resetSystem() {
   processedFilesData = [];
   fileInput.value = "";
   splitChunks = [];
+  splitExportRows = [];
   singleDownloadFileData = null;
 
   // UI Reset
